@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 4 — Admin Portal web (starting)
+## Active phase: Phase 5 — Identity & calendar integrations (starting)
 
 ## Phase status
 
@@ -18,7 +18,7 @@
 | 1 | Foundation: repo, Docker, multi-tenant DB, auth+domain routing, i18n, audit log | ✅ DONE (2026-07-19) |
 | 2 | Booking core & rule engine | ✅ DONE (2026-07-19) |
 | 3 | User Portal web | ✅ DONE (2026-07-19) |
-| 4 | Admin Portal web | ⬜ |
+| 4 | Admin Portal web | ✅ DONE (2026-07-19) |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
 | 7 | Analytics, migration, hardening, prod deploy | ⬜ |
@@ -27,6 +27,19 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 4 — DONE (2026-07-19)
+
+Admin API + Admin Portal (Next.js standalone) live on `127.0.0.1:8083`. All 5 containers healthy.
+QC gate:
+- [x] **Admin API** (`src/admin/*`, all `@Roles('ADMIN')` + JWT, tenant-scoped, audited): location hierarchy CRUD (office/building/floor), resource CRUD (+status), user mgmt (create w/ temp-password handoff, role, activate/deactivate w/ self-guard, reset pw), branding update (subdomain validation + global-uniqueness), overview (`/admin/bookings`, `/admin/audit`, `/admin/stats`)
+- [x] **401/403 fix**: global RolesGuard now returns 401 when unauthenticated, 403 when wrong role (was 403 for both)
+- [x] Tests: 5 suites / **35 tests** green incl. admin CRUD, self-deactivation guard, email-uniqueness, subdomain validation, admin tenant isolation
+- [x] HTTP smoke: admin endpoints 200/201, employee→403, unauth→401
+- [x] **Admin Portal** (`apps/web-admin`, standalone, port 8083, admin-only login guard): dashboard (stats + recent bookings), resources (CRUD table + modal), users (create/role/activate + temp-pw reveal), policies (list + rule editor: approval/duration/buffer/advance/quota/check-in), branding (color pickers + live preview), bookings (status filter), audit log
+- [x] Verified: `/login` renders admin console (5.9KB, markers), `/`→307, Next ready; reuses proven design system + api/auth/i18n/toast infra
+
+DEFERRED (API ready, UI later): office/building/floor management screens (only resource+policy+user+branding UIs shipped this pass); resource create can set floorId directly.
 
 ## Phase 3 — DONE (2026-07-19)
 
