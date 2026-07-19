@@ -1,5 +1,28 @@
-.env
+# dependencies
 node_modules/
-__pycache__/
-*.pyc
-.venv/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# prisma
+apps/api/prisma/*.db
+
+# misc
+.DS_Store
+coverage/
+.turbo/
