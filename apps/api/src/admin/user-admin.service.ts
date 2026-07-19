@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { hashPassword } from '../auth/password.util';
+import { PlanService } from '../billing/plan.service';
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -24,6 +25,7 @@ export class UserAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly plan: PlanService,
   ) {}
 
   list() {
@@ -37,6 +39,7 @@ export class UserAdminService {
     const email = dto.email.trim().toLowerCase();
     const clash = await this.prisma.scoped.user.findFirst({ where: { email } });
     if (clash) throw new BadRequestException('An account with this email already exists.');
+    await this.plan.assertCanAddUser(getTenantStore()?.tenantId as string);
 
     const tempPassword = dto.password ?? Math.random().toString(36).slice(2, 10) + 'A1!';
     const passwordHash = await hashPassword(tempPassword);

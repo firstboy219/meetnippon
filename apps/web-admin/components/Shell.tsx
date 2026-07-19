@@ -12,6 +12,7 @@ const ITEMS = [
   { href: '/policies', key: 'nav.policies' },
   { href: '/branding', key: 'nav.branding' },
   { href: '/integrations', key: 'nav.integrations' },
+  { href: '/billing', key: 'nav.billing' },
   { href: '/bookings', key: 'nav.bookings' },
   { href: '/audit', key: 'nav.audit' },
 ];

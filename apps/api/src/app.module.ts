@@ -15,6 +15,8 @@ import { BookingModule } from './booking/booking.module';
 import { ResourceModule } from './resource/resource.module';
 import { AdminModule } from './admin/admin.module';
 import { FeatureFlagModule } from './flags/feature-flag.module';
+import { BillingModule } from './billing/billing.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { SsoModule } from './sso/sso.module';
 import { NotificationModule } from './notification/notification.module';
@@ -40,6 +42,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     PrismaModule,
     AuditModule,
     FeatureFlagModule,
+    BillingModule,
     CalendarModule,
     NotificationModule,
     TenantModule,
@@ -47,6 +50,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     BookingModule,
     ResourceModule,
     AdminModule,
+    OnboardingModule,
     SsoModule,
     ApprovalHubModule,
     WorkLocationModule,

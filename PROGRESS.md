@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 8 — Android native (next; separate mobile track)
+## Active phase: Phases 8–9 (Android/iOS native) — separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE.
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
@@ -24,6 +24,9 @@
 | 5 | Identity & calendar integrations | ✅ DONE — scaffold w/ mocks+flags (2026-07-19) |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ✅ DONE — chat/hub/WFH real; recording/WA mock+flags (2026-07-19) |
 | 7 | Analytics, migration, hardening, **prod deploy** | ✅ DONE — live w/ TLS; migration bulk-import deferred (2026-07-19) |
+| 8 | Android native | ⬜ separate mobile track |
+| 9 | iOS native | ⬜ separate mobile track |
+| 10 | Billing & self-service onboarding | ✅ DONE — onboarding real; billing plans/limits real, payment mock (2026-07-19) |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
 | 7 | Analytics, migration, hardening, prod deploy | ⬜ |
@@ -32,6 +35,20 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 10 — DONE (2026-07-19)
+
+Billing & self-service onboarding. Onboarding + plan limits are real; payment is mock (Stripe = escalation). **9 suites / 61 tests**; live over HTTPS.
+QC gate:
+- [x] **Self-service onboarding** (`src/onboarding`, public, rate-limited): `POST /api/onboarding/register` → new Tenant + branding + first ADMIN + starter tenant-policy; slug validation (reuses subdomain rules) + global uniqueness + company-email required (public domains blocked)
+- [x] user-portal **/signup** page (public route) + "Create a workspace" link on login; success → sign-in
+- [x] **Billing** (`src/billing`, global): plans FREE/PRO/ENTERPRISE with user/resource limits + feature sets; plan stored in `billing` flag config (no schema change); `PlanService.assertCanAddUser/Resource` **enforced** in admin user/resource create; `GET/PUT /api/admin/billing[/plan]`
+- [x] admin **Billing** page: current plan, usage bars vs limits, feature chips, plan switcher
+- [x] Tests: onboarding (create, dup-slug 400, reserved-slug 400, public-email 400), billing (FREE default, limit block, PRO upgrade raises limit, summary)
+- [x] **Live HTTPS smoke**: registered `democo9678` → logged in → FREE (10 users/5 res) → upgraded PRO → dup 400, gmail 400
+- [x] Fixed a real bug: `PUBLIC_EMAIL_DOMAINS` read as comma-string from env, now normalized defensively
+
+**ESC (to enable real payments):** Stripe (or provider) keys → wire `PlanService.setPlan` to a checkout/subscription flow; today plan changes are immediate/mock.
 
 ## Phase 7 — DONE (2026-07-19) — 🟢 PRODUCTION LIVE
 

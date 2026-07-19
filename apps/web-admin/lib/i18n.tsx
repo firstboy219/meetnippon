@@ -10,6 +10,7 @@ const DICT: Record<string, { en: string; id: string }> = {
   'nav.policies': { en: 'Booking Policies', id: 'Kebijakan Booking' },
   'nav.branding': { en: 'Branding', id: 'Branding' },
   'nav.integrations': { en: 'Integrations', id: 'Integrasi' },
+  'nav.billing': { en: 'Billing', id: 'Tagihan' },
   'nav.bookings': { en: 'Bookings', id: 'Booking' },
   'nav.audit': { en: 'Audit Log', id: 'Log Audit' },
   'common.signout': { en: 'Sign out', id: 'Keluar' },

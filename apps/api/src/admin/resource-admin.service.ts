@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { getTenantStore } from '../tenant/tenant-context';
+import { PlanService } from '../billing/plan.service';
 import { CreateResourceDto, UpdateResourceDto } from './dto/resource-admin.dto';
 
 /** Admin CRUD for bookable resources (rooms & desks). Includes inactive ones. */
@@ -9,6 +11,7 @@ export class ResourceAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly plan: PlanService,
   ) {}
 
   listAll() {
@@ -19,6 +22,7 @@ export class ResourceAdminService {
   }
 
   async create(dto: CreateResourceDto) {
+    await this.plan.assertCanAddResource(getTenantStore()?.tenantId as string);
     const r = await this.prisma.scoped.resource.create({
       data: {
         type: dto.type,

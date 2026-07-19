@@ -8,7 +8,7 @@ import { Sidebar, Topbar } from '@/components/Shell';
 const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'], ['/users', 'nav.users'],
   ['/policies', 'nav.policies'], ['/branding', 'nav.branding'], ['/integrations', 'nav.integrations'],
-  ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
+  ['/billing', 'nav.billing'], ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

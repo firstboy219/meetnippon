@@ -10,6 +10,8 @@ import { LocationService } from '../src/admin/location.service';
 import { ResourceAdminService } from '../src/admin/resource-admin.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
 import { BrandingService } from '../src/admin/branding.service';
+import { FeatureFlagService } from '../src/flags/feature-flag.service';
+import { PlanService } from '../src/billing/plan.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
 
 const A = 'adm-tA';
@@ -18,9 +20,11 @@ const ADMIN = 'adm-admin';
 
 const prisma = new PrismaService();
 const audit = new AuditService(prisma);
+const flags = new FeatureFlagService(prisma, audit);
+const plan = new PlanService(prisma, flags);
 const loc = new LocationService(prisma, audit);
-const resAdmin = new ResourceAdminService(prisma, audit);
-const users = new UserAdminService(prisma, audit);
+const resAdmin = new ResourceAdminService(prisma, audit, plan);
+const users = new UserAdminService(prisma, audit, plan);
 const branding = new BrandingService(prisma, audit);
 
 const asAdmin = <T>(fn: () => Promise<T>) =>
