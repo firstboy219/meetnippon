@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import type { ApprovalStep } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
+import WelcomeTour from '@/components/WelcomeTour';
 
 const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'],
@@ -39,6 +40,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Topbar title={t(titleKey)} />
         <div className="content">{children}</div>
       </div>
+      <WelcomeTour />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { Sidebar, Topbar } from '@/components/Shell';
+import WelcomeTour from '@/components/WelcomeTour';
 
 const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'], ['/users', 'nav.users'],
@@ -31,6 +32,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Topbar title={t(titleKey)} />
         <div className="content">{children}</div>
       </div>
+      <WelcomeTour />
     </div>
   );
 }

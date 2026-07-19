@@ -12,6 +12,8 @@
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
+**DEMO-READY (2026-07-19):** pilot tenant `nipsea` fully populated via `scripts/seed_demo.sh` (`prisma/seed-demo.ts`, idempotent) — 5+ users, 7 rooms/desks across floors, policies (VIP needs approval), bookings (past/upcoming/pending), approval-hub tasks, chat + messages, notifications, WFH logs. **All feature flags ON** (chat, calendar_sync, recording, whatsapp, sso_microsoft — mock; plan PRO). First-login **welcome wizard** on both portals (localStorage `mn_tour_v1`/`mn_admin_tour_v1`, replay via "?" in topbar). Demo logins: `admin@nipsea.co.id`/`ChangeMe123!`; `dina|budi|siti|eko@nipsea.co.id`/`Password123!`.
+
 ## Phase status
 
 | Phase | Focus | Status |

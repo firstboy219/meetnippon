@@ -49,6 +49,9 @@ export function Topbar({ title }: { title: string }) {
     <header className="topbar">
       <h2>{title}</h2>
       <div className="topbar-right">
+        <button className="btn btn-ghost btn-sm" title="Show tour"
+          onClick={() => window.dispatchEvent(new Event('mn:tour'))}
+          style={{ width: 32, height: 32, padding: 0, borderRadius: '50%' }}>?</button>
         <div className="lang-toggle">
           <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
           <button className={lang === 'id' ? 'active' : ''} onClick={() => setLang('id')}>ID</button>
