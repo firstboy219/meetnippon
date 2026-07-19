@@ -4,6 +4,7 @@ import type { Lang } from './types';
 
 const DICT: Record<string, { en: string; id: string }> = {
   'nav.dashboard': { en: 'Overview', id: 'Ringkasan' },
+  'nav.analytics': { en: 'Analytics', id: 'Analitik' },
   'nav.resources': { en: 'Resources', id: 'Ruang & Desk' },
   'nav.users': { en: 'Users', id: 'Pengguna' },
   'nav.policies': { en: 'Booking Policies', id: 'Kebijakan Booking' },

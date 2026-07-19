@@ -8,7 +8,9 @@
 
 ---
 
-## Active phase: Phase 7 — Analytics, migration, hardening, prod deploy (starting)
+## Active phase: Phase 8 — Android native (next; separate mobile track)
+
+**🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal + API + chat WS, Let's Encrypt TLS).
 
 ## Phase status
 
@@ -21,6 +23,7 @@
 | 4 | Admin Portal web | ✅ DONE (2026-07-19) |
 | 5 | Identity & calendar integrations | ✅ DONE — scaffold w/ mocks+flags (2026-07-19) |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ✅ DONE — chat/hub/WFH real; recording/WA mock+flags (2026-07-19) |
+| 7 | Analytics, migration, hardening, **prod deploy** | ✅ DONE — live w/ TLS; migration bulk-import deferred (2026-07-19) |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
 | 7 | Analytics, migration, hardening, prod deploy | ⬜ |
@@ -29,6 +32,26 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 7 — DONE (2026-07-19) — 🟢 PRODUCTION LIVE
+
+MeetNippon deployed to production on the shared server, additively and safely.
+QC gate:
+- [x] **Prod deploy**: additive nginx vhost `meetnippon.cosger.online` → user portal (8082) + `/api/` (8081) + `/socket.io/` (8081); **Let's Encrypt TLS** via certbot `--nginx` (expires 2026-10-17, auto-renew); http→https 301. Verified: `/login` 200, `POST /api/auth/login` 200, `/api/health` 200 over HTTPS
+- [x] **Shared-server safety**: only our own vhost written; `nginx -t` passes; symlink auto-rollback on test failure; co-hosted apitoko/viewtoko/xtracker/n8n untouched (their certs/vhosts unchanged)
+- [x] **Hardening**: mem limits — api 512m, web-user/admin 320m, db 448m, redis 128m (+maxmemory 96mb LRU); baked into run scripts + compose. Live usage ~154MB total, 2.1GB free
+- [x] **Backups**: `scripts/backup_db.sh` (pg_dump→gz, 7-day retention) + cron 02:30 UTC; first backup verified
+- [x] **Analytics**: `GET /api/admin/analytics` (bookings by status/type, 30-day, approval rate, top resources, WFH today) + web-admin **Analytics** page (bars + stat tiles). Verified 200 over HTTPS with real data
+- [x] Tests still **8 suites / 55**; 5 containers healthy
+
+DEPLOY SCRIPTS: `scripts/deploy_nginx.sh` (vhost+TLS), `scripts/harden.sh` (limits+cron), `scripts/backup_db.sh`.
+
+**OWNER TO-DO (deferred, escalation-gated):**
+- **Admin portal public URL** — currently internal only (127.0.0.1:8083). Needs `admin.meetnippon.cosger.online` DNS (or wildcard) + cert, then a vhost like the user one. Reachable now via SSH tunnel.
+- **Wildcard DNS** `*.meetnippon.cosger.online` → tenant-subdomain mode (shared-URL works today).
+- **Prod SMTP** creds → real invitation/reminder emails (currently none wired).
+- **Migration bulk-import** (CSV users/resources) — deferred to a follow-up.
+- Housekeeping: stale `viewtoko.*.bak` files in nginx sites-enabled cause pre-existing "conflicting server name" warnings (not ours; left untouched).
 
 ## Phase 6 — DONE (2026-07-19)
 

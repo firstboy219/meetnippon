@@ -55,6 +55,7 @@ echo "==> [7/7] build prod image + run API"
 docker build -f apps/api/Dockerfile --target prod -t meetnippon-api:prod .
 docker rm -f meetnippon-api >/dev/null 2>&1 || true
 docker run -d --name meetnippon-api --network "$NET" --env-file .env \
+  --memory 512m --memory-swap 512m \
   -p 127.0.0.1:8081:8081 --restart unless-stopped meetnippon-api:prod
 sleep 4
 echo "    health:  $(curl -s http://127.0.0.1:8081/api/health)"

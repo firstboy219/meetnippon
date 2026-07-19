@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { Sidebar, Topbar } from '@/components/Shell';
 
 const TITLES: [string, string][] = [
-  ['/dashboard', 'nav.dashboard'], ['/resources', 'nav.resources'], ['/users', 'nav.users'],
+  ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'], ['/users', 'nav.users'],
   ['/policies', 'nav.policies'], ['/branding', 'nav.branding'], ['/integrations', 'nav.integrations'],
   ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
 ];

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 
 const ITEMS = [
   { href: '/dashboard', key: 'nav.dashboard' },
+  { href: '/analytics', key: 'nav.analytics' },
   { href: '/resources', key: 'nav.resources' },
   { href: '/users', key: 'nav.users' },
   { href: '/policies', key: 'nav.policies' },

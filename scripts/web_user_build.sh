@@ -9,7 +9,7 @@ docker build -f apps/web-user/Dockerfile --target prod -t meetnippon-web-user:pr
 
 docker rm -f meetnippon-web-user >/dev/null 2>&1 || true
 docker run -d --name meetnippon-web-user --network "$NET" \
-  -e NEXT_PUBLIC_API_URL=/api \
+  -e NEXT_PUBLIC_API_URL=/api --memory 320m --memory-swap 320m \
   -p 127.0.0.1:8082:3000 --restart unless-stopped meetnippon-web-user:prod
 
 sleep 5

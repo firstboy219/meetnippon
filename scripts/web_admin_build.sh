@@ -9,7 +9,7 @@ docker build -f apps/web-admin/Dockerfile --target prod -t meetnippon-web-admin:
 
 docker rm -f meetnippon-web-admin >/dev/null 2>&1 || true
 docker run -d --name meetnippon-web-admin --network "$NET" \
-  -e NEXT_PUBLIC_API_URL=/api \
+  -e NEXT_PUBLIC_API_URL=/api --memory 320m --memory-swap 320m \
   -p 127.0.0.1:8083:3000 --restart unless-stopped meetnippon-web-admin:prod
 
 sleep 5

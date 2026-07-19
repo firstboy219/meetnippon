@@ -9,6 +9,8 @@ import { BrandingService } from './branding.service';
 import { BrandingController } from './branding.controller';
 import { AdminOverviewController } from './admin-overview.controller';
 import { FeatureFlagController } from './feature-flag.controller';
+import { AnalyticsController } from './analytics.controller';
+import { AnalyticsService } from './analytics.service';
 
 @Module({
   controllers: [
@@ -18,12 +20,14 @@ import { FeatureFlagController } from './feature-flag.controller';
     BrandingController,
     AdminOverviewController,
     FeatureFlagController,
+    AnalyticsController,
   ],
   providers: [
     LocationService,
     ResourceAdminService,
     UserAdminService,
     BrandingService,
+    AnalyticsService,
   ],
 })
 export class AdminModule {}
