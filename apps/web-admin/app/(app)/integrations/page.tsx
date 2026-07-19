@@ -9,6 +9,9 @@ const CATALOG = [
   { key: 'sso_microsoft', label: 'Microsoft 365 SSO', sso: true, desc: 'Sign in with Azure AD / Microsoft 365.' },
   { key: 'sso_google', label: 'Google SSO', sso: true, desc: 'Sign in with Google Workspace.' },
   { key: 'calendar_sync', label: 'Calendar sync', sso: false, desc: 'Push bookings to users’ calendars.' },
+  { key: 'chat', label: 'Internal chat', sso: false, desc: 'Real-time messaging between members.' },
+  { key: 'whatsapp', label: 'WhatsApp notifications', sso: false, desc: 'Deliver reminders & approvals over WhatsApp.' },
+  { key: 'recording', label: 'Meeting recording', sso: false, desc: 'Record meetings and generate transcripts.' },
 ];
 
 export default function IntegrationsPage() {

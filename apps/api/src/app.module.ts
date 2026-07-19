@@ -21,6 +21,7 @@ import { NotificationModule } from './notification/notification.module';
 import { ApprovalHubModule } from './approval-hub/approval-hub.module';
 import { WorkLocationModule } from './work-location/work-location.module';
 import { RecordingModule } from './recording/recording.module';
+import { ChatModule } from './chat/chat.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
 
@@ -50,6 +51,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     ApprovalHubModule,
     WorkLocationModule,
     RecordingModule,
+    ChatModule,
     HealthModule,
   ],
 })

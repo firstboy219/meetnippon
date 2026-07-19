@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 6 — Advanced modules (chat, approval hub, WFH, recording, WA) (starting)
+## Active phase: Phase 7 — Analytics, migration, hardening, prod deploy (starting)
 
 ## Phase status
 
@@ -20,6 +20,7 @@
 | 3 | User Portal web | ✅ DONE (2026-07-19) |
 | 4 | Admin Portal web | ✅ DONE (2026-07-19) |
 | 5 | Identity & calendar integrations | ✅ DONE — scaffold w/ mocks+flags (2026-07-19) |
+| 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ✅ DONE — chat/hub/WFH real; recording/WA mock+flags (2026-07-19) |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
 | 7 | Analytics, migration, hardening, prod deploy | ⬜ |
@@ -28,6 +29,21 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 6 — DONE (2026-07-19)
+
+Advanced modules. Real where no creds needed (chat, approval hub, WFH, notifications); recording + WhatsApp scaffolded behind flags (escalation-pending creds). **8 test suites / 55 tests**; all HTTP + WS smokes green; 5 containers healthy.
+QC gate:
+- [x] **Notifications** (`src/notification`, global): in-app create/list/unread/mark-read + **WhatsApp mock channel** (flag `whatsapp`, live-mode stub for Business API)
+- [x] **Universal Approval Hub** (BRD 7.14, `src/approval-hub`): ingest external tasks → notify approver → list → decide, with **mock callback webhook** (callbackStatus SENT); approver/admin guard, tenant-scoped, audited
+- [x] **WFH detection** (BRD 7.13, `src/work-location`): pure haversine geofence classify (OFFICE/WFH) + manual override; **privacy-preserving** (stores category + office name only, never raw GPS); daily `WorkLocationLog`
+- [x] **Recording** (BRD 7.8, `src/recording`): flag `recording`, mock produces READY + placeholder transcript (live = STT escalation); notifies organizer
+- [x] **Chat** (BRD 7.12, `src/chat`): REST (DM/group, messages, membership guard, flag `chat`) + **Socket.IO gateway** (token-auth handshake, per-tenant ALS context, conversation rooms, real-time `message:new`)
+- [x] **UI**: user portal **Chat** (two-pane, polling) + **Approval Hub** pages + nav; admin **Integrations** catalog expanded (chat/whatsapp/recording toggles)
+- [x] HTTP/WS smoke: approval-hub create→decide (callback SENT), WFH report/today, notifications (unread=1), recording READY+transcript, chat DM+message+list, socket.io handshake 200
+
+**ESC-1 open (to go live):** WhatsApp Business API (phone-number id + token) for `whatsapp`; Speech-to-Text creds for `recording` live mode. Both run in mock until provided.
+NOTE (UI follow-up): chat "start new conversation" needs a member picker (a user-directory endpoint); DMs currently created via API/admin. Approval-hub external ingestion is JWT-auth now; API-key ingest (BRD 7.14.5) is a follow-up.
 
 ## Phase 5 — DONE — scaffold with mocks + flags (2026-07-19)
 

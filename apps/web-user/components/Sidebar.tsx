@@ -9,6 +9,8 @@ const ITEMS = [
   { href: '/book', key: 'nav.book' },
   { href: '/bookings', key: 'nav.bookings' },
   { href: '/approvals', key: 'nav.approval' },
+  { href: '/hub', key: 'nav.hub' },
+  { href: '/chat', key: 'nav.chat' },
 ];
 
 export default function Sidebar({ pendingCount }: { pendingCount: number }) {

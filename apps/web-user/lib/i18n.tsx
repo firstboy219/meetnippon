@@ -10,6 +10,8 @@ const DICT: Dict = {
   'nav.book': { en: 'Book Room/Desk', id: 'Book Room/Desk' },
   'nav.bookings': { en: 'My Bookings', id: 'Booking Saya' },
   'nav.approval': { en: 'Approval', id: 'Approval' },
+  'nav.hub': { en: 'Approval Hub', id: 'Hub Approval' },
+  'nav.chat': { en: 'Chat', id: 'Chat' },
   'common.signout': { en: 'Sign out', id: 'Keluar' },
   'common.cancel': { en: 'Cancel', id: 'Batal' },
   'common.loading': { en: 'Loading…', id: 'Memuat…' },

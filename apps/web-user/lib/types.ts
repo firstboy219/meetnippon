@@ -44,6 +44,23 @@ export interface Booking {
   resource?: { name: string; type: string } | null;
 }
 
+export interface ExternalTask {
+  id: string; category: string; title: string; body: string | null;
+  requesterName: string | null; sourcePlatform: string | null;
+  decision: 'PENDING' | 'APPROVED' | 'REJECTED'; createdAt: string;
+}
+
+export interface ChatConversation {
+  id: string; isGroup: boolean; name: string;
+  members: { id: string; fullName: string; presence?: string }[];
+  lastMessage: { body: string; createdAt: string } | null;
+}
+
+export interface ChatMessage {
+  id: string; body: string; senderId: string | null;
+  sender?: { id: string; fullName: string } | null; createdAt: string;
+}
+
 export interface ApprovalStep {
   id: string;
   level: number;
