@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 3 — User Portal web (starting)
+## Active phase: Phase 4 — Admin Portal web (starting)
 
 ## Phase status
 
@@ -17,7 +17,7 @@
 | 0 | Server audit & safe deploy plan | ✅ DONE (2026-07-18) |
 | 1 | Foundation: repo, Docker, multi-tenant DB, auth+domain routing, i18n, audit log | ✅ DONE (2026-07-19) |
 | 2 | Booking core & rule engine | ✅ DONE (2026-07-19) |
-| 3 | User Portal web | ⬜ |
+| 3 | User Portal web | ✅ DONE (2026-07-19) |
 | 4 | Admin Portal web | ⬜ |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
@@ -27,6 +27,21 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 3 — DONE (2026-07-19)
+
+User Portal (Next.js 14 app router) built as standalone image and running on `127.0.0.1:8082`.
+QC gate:
+- [x] Next.js 14 app, TS strict, standalone output (`outputFileTracingRoot` = repo root); Debian-slim Dockerfile (dev/build/prod), `NODE_OPTIONS=--max-old-space-size=1536` (3.7GB OOM guard)
+- [x] Design system ported from binding mockup (`globals.css`): teal/coral tokens, Space Grotesk+Inter, sidebar/topbar/cards/swatch/toast/modal
+- [x] **Runtime theming**: AuthProvider fetches `/api/tenant/branding` (by host) → sets `--teal`/`--coral` from primaryColor/accentColor
+- [x] **i18n EN/ID** dictionary + toggle (persisted); **auth** context (login/refresh tokens in localStorage, `/auth/me` bootstrap, guarded `(app)` layout → redirect to /login)
+- [x] Branded **login** (workspace field in shared-URL mode), **dashboard** (stats + upcoming from `/bookings`), **book** (resource grid + booking modal → `/bookings`), **my bookings** (table + cancel), **approvals** inbox (list + approve/reject)
+- [x] New API: user-facing `GET /api/resources` (+ `:id`), tenant-scoped, JWT-guarded — verified 200 (rooms/desks) / 401 unauth
+- [x] Verified: `/login` renders full app (5.9KB, markers present), `/` → 307→/dashboard, Next ready; API still 29/29 tests green after adding resources module
+- [x] All 4 containers healthy (web-user, api, db, redis); isolated stack, other server projects untouched
+
+NOTE: portal is client-rendered; browser calls API at `NEXT_PUBLIC_API_URL` (default `/api`, nginx same-origin in Phase 7). Full click-through browser test deferred to Phase 7 (nginx) — SSR render + each dependent API endpoint verified independently. Chat/Denah/Kalender/WFH/presence are later phases (nav not yet shown for those).
 
 ## Phase 2 — DONE (2026-07-19)
 
