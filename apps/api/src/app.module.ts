@@ -17,6 +17,10 @@ import { AdminModule } from './admin/admin.module';
 import { FeatureFlagModule } from './flags/feature-flag.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { SsoModule } from './sso/sso.module';
+import { NotificationModule } from './notification/notification.module';
+import { ApprovalHubModule } from './approval-hub/approval-hub.module';
+import { WorkLocationModule } from './work-location/work-location.module';
+import { RecordingModule } from './recording/recording.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
 
@@ -36,12 +40,16 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     AuditModule,
     FeatureFlagModule,
     CalendarModule,
+    NotificationModule,
     TenantModule,
     AuthModule,
     BookingModule,
     ResourceModule,
     AdminModule,
     SsoModule,
+    ApprovalHubModule,
+    WorkLocationModule,
+    RecordingModule,
     HealthModule,
   ],
 })
