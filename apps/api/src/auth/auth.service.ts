@@ -108,6 +108,34 @@ export class AuthService {
     };
   }
 
+  /**
+   * Build a signed session (access + refresh + user) for an already-authenticated
+   * user. Shared by password login and SSO (JIT-provisioned) sign-in.
+   */
+  async issueSession(user: {
+    id: string; tenantId: string; role: string; languagePref: string;
+    email: string; fullName: string;
+  }): Promise<LoginResult> {
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      tenantId: user.tenantId,
+      role: user.role as AccessTokenPayload['role'],
+      lang: user.languagePref as Language,
+    };
+    const tokens = await this.signTokens(payload);
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role as AccessTokenPayload['role'],
+        languagePref: user.languagePref as Language,
+        tenantId: user.tenantId,
+      },
+    };
+  }
+
   async refresh(refreshToken: string) {
     let decoded: { sub?: string; tenantId?: string; typ?: string };
     try {

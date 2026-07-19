@@ -8,6 +8,7 @@ import {
 import { nanoid } from 'nanoid';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { PolicyResolverService } from './policy/policy-resolver.service';
 import { DEFAULT_RULES, PolicyRules } from './policy/policy.types';
@@ -31,6 +32,7 @@ export class BookingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly resolver: PolicyResolverService,
+    private readonly calendar: CalendarService,
   ) {}
 
   private caller() {
@@ -189,6 +191,17 @@ export class BookingService {
       entityId: created[0].id,
       metadata: { count: created.length, status, resourceId: resource?.id ?? null },
     });
+
+    const tid = caller ? getTenantStore()?.tenantId : null;
+    if (tid) {
+      await this.calendar.onBookingCreated(tid, {
+        bookingId: created[0].id,
+        title: dto.title,
+        startTime: occurrences[0].start,
+        endTime: occurrences[0].end,
+        organizerId: principalId,
+      });
+    }
 
     return dto.recurrence ? { groupId, count: created.length, bookings: created } : created[0];
   }

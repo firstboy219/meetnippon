@@ -8,6 +8,7 @@ import { UserAdminController } from './user-admin.controller';
 import { BrandingService } from './branding.service';
 import { BrandingController } from './branding.controller';
 import { AdminOverviewController } from './admin-overview.controller';
+import { FeatureFlagController } from './feature-flag.controller';
 
 @Module({
   controllers: [
@@ -16,6 +17,7 @@ import { AdminOverviewController } from './admin-overview.controller';
     UserAdminController,
     BrandingController,
     AdminOverviewController,
+    FeatureFlagController,
   ],
   providers: [
     LocationService,

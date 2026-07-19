@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 5 — Identity & calendar integrations (starting)
+## Active phase: Phase 6 — Advanced modules (chat, approval hub, WFH, recording, WA) (starting)
 
 ## Phase status
 
@@ -19,6 +19,7 @@
 | 2 | Booking core & rule engine | ✅ DONE (2026-07-19) |
 | 3 | User Portal web | ✅ DONE (2026-07-19) |
 | 4 | Admin Portal web | ✅ DONE (2026-07-19) |
+| 5 | Identity & calendar integrations | ✅ DONE — scaffold w/ mocks+flags (2026-07-19) |
 | 5 | Identity & calendar integrations | ⬜ |
 | 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
 | 7 | Analytics, migration, hardening, prod deploy | ⬜ |
@@ -27,6 +28,20 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 5 — DONE — scaffold with mocks + flags (2026-07-19)
+
+Owner approved (escalation #1): build SSO/calendar architecture behind per-tenant feature flags with a working mock provider; switch to live when Azure/Google creds arrive.
+QC gate:
+- [x] **Feature flags** (`src/flags`, global): `FeatureFlagService` (isEnabled/configFor/upsert) + admin `GET/PUT /admin/feature-flags` + web-admin **Integrations** page (toggle sso_microsoft/sso_google/calendar_sync, mode mock/live, clientId, autoProvision)
+- [x] **SSO** (`src/sso`): provider abstraction + **MockProvider** (fully working) + **Microsoft/Google** adapters (real OIDC auth-URL + token/userinfo exchange, **inert without creds**). Endpoints `POST /auth/sso/:p/start`, `POST|GET /auth/sso/:p/callback`; signed short-TTL state; **JIT provisioning** (match by tenant+email, verified-domain check, autoProvision) → issues our session via shared `AuthService.issueSession`
+- [x] **Calendar sync** (`src/calendar`, flag-gated): `CalendarService` mock adapter records intent (Notification); hooked into `BookingService` create/cancel; live Graph/Google adapters stubbed
+- [x] user-portal login: **Microsoft 365 / Google** buttons (mock → email consent prompt → callback → session; live → redirect to provider)
+- [x] Tests: **6 suites / 40 tests** incl. SSO mock flow (start→callback→JIT→session), reuse-existing-user, flag gating, tampered-state; booking suite updated for calendar dep
+- [x] HTTP smoke: flag enable 200, SSO start (mock) `mock:consent`+state, callback JIT-provisions user + tokens, disabled provider 400, bad state 401
+- [x] Both portals rebuilt/live (8082 user w/ SSO buttons, 8083 admin w/ Integrations); 5 containers healthy
+
+**ESC-1 still open (to go live):** provide per-provider **clientId** (set in Integrations, mode=live) + server env **MS_CLIENT_SECRET** / **GOOGLE_CLIENT_SECRET** + registered **redirect URI** `https://<host>/api/auth/sso/<provider>/callback`. WhatsApp/STT/SMTP creds anticipated in Phase 6.
 
 ## Phase 4 — DONE (2026-07-19)
 

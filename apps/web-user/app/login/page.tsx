@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
+import { api, tokenStore } from '@/lib/api';
 
 export default function LoginPage() {
   const { login, branding, user, ready } = useAuth();
@@ -31,6 +32,29 @@ export default function LoginPage() {
       setErr(e?.message || 'Sign in failed.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function ssoSignIn(provider: 'microsoft' | 'google') {
+    setErr('');
+    if (needsWorkspace && !workspace) { setErr('Enter your workspace first.'); return; }
+    try {
+      const start = await api.post<{ mode: string; url: string; state: string }>(
+        `/auth/sso/${provider}/start`, { tenantSlug: needsWorkspace ? workspace : undefined }, false,
+      );
+      if (start.mode === 'mock') {
+        const who = window.prompt('Mock SSO — sign in as (email or email|Name):');
+        if (!who) return;
+        const cb = await api.post<{ accessToken: string; refreshToken: string }>(
+          `/auth/sso/${provider}/callback`, { code: who, state: start.state }, false,
+        );
+        tokenStore.set(cb.accessToken, cb.refreshToken);
+        window.location.href = '/dashboard';
+      } else {
+        window.location.href = start.url;
+      }
+    } catch (e: any) {
+      setErr(e?.message || 'SSO sign-in is not available.');
     }
   }
 
@@ -66,6 +90,13 @@ export default function LoginPage() {
           <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy}>
             {busy ? <span className="spinner" /> : t('login.submit')}
           </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0', color: 'var(--ink-soft)', fontSize: 12 }}>
+            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => ssoSignIn('microsoft')}>Microsoft 365</button>
+            <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => ssoSignIn('google')}>Google</button>
+          </div>
         </form>
       </div>
     </div>

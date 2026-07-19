@@ -13,6 +13,8 @@ import { AuditService } from '../src/audit/audit.service';
 import { PolicyResolverService } from '../src/booking/policy/policy-resolver.service';
 import { BookingService } from '../src/booking/booking.service';
 import { ApprovalService } from '../src/booking/approval.service';
+import { FeatureFlagService } from '../src/flags/feature-flag.service';
+import { CalendarService } from '../src/calendar/calendar.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
 
 const A = 'bk-tA';
@@ -24,7 +26,9 @@ const EMP_B = 'bk-empB';
 const prisma = new PrismaService();
 const resolver = new PolicyResolverService(prisma);
 const audit = new AuditService(prisma);
-const booking = new BookingService(prisma, audit, resolver);
+const flags = new FeatureFlagService(prisma, audit);
+const calendar = new CalendarService(prisma, flags);
+const booking = new BookingService(prisma, audit, resolver, calendar);
 const approvals = new ApprovalService(prisma, audit);
 
 // two days out, avoids min-advance and past-time issues

@@ -14,6 +14,9 @@ import { AuthModule } from './auth/auth.module';
 import { BookingModule } from './booking/booking.module';
 import { ResourceModule } from './resource/resource.module';
 import { AdminModule } from './admin/admin.module';
+import { FeatureFlagModule } from './flags/feature-flag.module';
+import { CalendarModule } from './calendar/calendar.module';
+import { SsoModule } from './sso/sso.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
 
@@ -31,11 +34,14 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     ]),
     PrismaModule,
     AuditModule,
+    FeatureFlagModule,
+    CalendarModule,
     TenantModule,
     AuthModule,
     BookingModule,
     ResourceModule,
     AdminModule,
+    SsoModule,
     HealthModule,
   ],
 })
