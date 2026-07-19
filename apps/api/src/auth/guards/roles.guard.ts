@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { UserRole } from '@meetnippon/shared';
@@ -20,7 +21,13 @@ export class RolesGuard implements CanActivate {
     );
     if (!required || required.length === 0) return true;
 
-    const role = getTenantStore()?.role as UserRole | undefined;
+    // Global guard runs before the controller's JwtAuthGuard, so distinguish
+    // "not authenticated" (401) from "authenticated but wrong role" (403).
+    const store = getTenantStore();
+    if (!store?.userId) {
+      throw new UnauthorizedException('Authentication required.');
+    }
+    const role = store.role as UserRole | undefined;
     if (!role || !required.includes(role)) {
       throw new ForbiddenException('Insufficient role.');
     }

@@ -13,6 +13,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { AuthModule } from './auth/auth.module';
 import { BookingModule } from './booking/booking.module';
 import { ResourceModule } from './resource/resource.module';
+import { AdminModule } from './admin/admin.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
 
@@ -34,6 +35,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     AuthModule,
     BookingModule,
     ResourceModule,
+    AdminModule,
     HealthModule,
   ],
 })
