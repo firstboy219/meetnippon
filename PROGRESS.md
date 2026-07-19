@@ -10,7 +10,7 @@
 
 ## Active phase: Phase 8 — Android native (next; separate mobile track)
 
-**🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal + API + chat WS, Let's Encrypt TLS).
+**🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
 ## Phase status
 
@@ -46,8 +46,9 @@ QC gate:
 
 DEPLOY SCRIPTS: `scripts/deploy_nginx.sh` (vhost+TLS), `scripts/harden.sh` (limits+cron), `scripts/backup_db.sh`.
 
+**Admin portal PUBLIC (2026-07-19):** https://admin.meetnippon.cosger.online (vhost → 8083 + /api/ → 8081, TLS). Deploy: `scripts/deploy_nginx_admin.sh`.
+
 **OWNER TO-DO (deferred, escalation-gated):**
-- **Admin portal public URL** — currently internal only (127.0.0.1:8083). Needs `admin.meetnippon.cosger.online` DNS (or wildcard) + cert, then a vhost like the user one. Reachable now via SSH tunnel.
 - **Wildcard DNS** `*.meetnippon.cosger.online` → tenant-subdomain mode (shared-URL works today).
 - **Prod SMTP** creds → real invitation/reminder emails (currently none wired).
 - **Migration bulk-import** (CSV users/resources) — deferred to a follow-up.
