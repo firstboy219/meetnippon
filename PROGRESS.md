@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phase 2 — Booking core & rule engine (starting)
+## Active phase: Phase 3 — User Portal web (starting)
 
 ## Phase status
 
@@ -16,7 +16,7 @@
 |-------|-------|--------|
 | 0 | Server audit & safe deploy plan | ✅ DONE (2026-07-18) |
 | 1 | Foundation: repo, Docker, multi-tenant DB, auth+domain routing, i18n, audit log | ✅ DONE (2026-07-19) |
-| 2 | Booking core & rule engine | ⬜ |
+| 2 | Booking core & rule engine | ✅ DONE (2026-07-19) |
 | 3 | User Portal web | ⬜ |
 | 4 | Admin Portal web | ⬜ |
 | 5 | Identity & calendar integrations | ⬜ |
@@ -27,6 +27,21 @@
 | 10 | Billing & self-service onboarding | ⬜ |
 
 ---
+
+## Phase 2 — DONE (2026-07-19)
+
+Booking core + rule engine, verified on server (29/29 tests) and end-to-end via HTTP.
+QC gate:
+- [x] **Rule engine (BRD 7.3):** `PolicyRules` schema + defaults; pure 3-level resolver TENANT←CATEGORY←ROOM (`mergeRules`); policy CRUD service + admin `/api/policies` (GET/PUT/DELETE + effective preview)
+- [x] **Booking core (BRD 7.4):** create with full policy validation (duration/advance/business-hours/external/recurring/daily-quota), conflict detection with buffer, delegate booking (admin-on-behalf), cancel, check-in token, `list mine`, availability
+- [x] Recurrence expansion (DAILY/WEEKLY, all-or-nothing conflict pre-check)
+- [x] **Approval flow:** approval steps created when policy requires; approver `/api/approvals` list + decide; booking status recomputed (REJECTED if any / APPROVED if all)
+- [x] All booking/policy/approval endpoints under tenant-isolation guard + JWT; roles enforced (ADMIN policies, APPROVER/ADMIN decide)
+- [x] Tests green (4 suites, 29 tests): rule-merge precedence, slot validation, business hours, occurrences, conflict, approval end-to-end, policy rejection, **cross-tenant booking isolation**
+- [x] HTTP smoke: booking 201/APPROVED, overlap 409, availability, ONLINE no-resource, policy upsert 200, unauth 401
+- [x] No schema change (all models existed from Phase 1) → migrate deploy no-op
+
+Modules: `apps/api/src/booking/{booking,approval}.*` + `booking/policy/*`; pure helpers in `booking.rules.ts` + `policy/policy.types.ts`. Time model = UTC wall-clock (per-tenant tz = later hardening).
 
 ## Phase 1 — DONE (2026-07-19)
 
