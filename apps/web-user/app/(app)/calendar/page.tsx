@@ -1,8 +1,11 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
+import EditBookingModal from '@/components/EditBookingModal';
 import type { Booking } from '@/lib/types';
 import {
   fmtTime, fmtDayLong, fmtMonthYear, localDateKey,
@@ -42,11 +45,19 @@ function monthGrid(monthKey: string): string[] {
   );
 }
 
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
 export default function CalendarPage() {
   const { t, lang } = useI18n();
+  const { user } = useAuth();
+  const params = useSearchParams();
   const today = todayLocal();
-  const [month, setMonth] = useState(() => today.slice(0, 7));
-  const [selected, setSelected] = useState(today);
+  // ?d=YYYY-MM-DD lets the booking flow hand off to the day it just filled.
+  const requested = params.get('d');
+  const initial = requested && DAY_KEY.test(requested) ? requested : today;
+  const [month, setMonth] = useState(() => initial.slice(0, 7));
+  const [selected, setSelected] = useState(initial);
+  const [editing, setEditing] = useState<Booking | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
@@ -156,19 +167,34 @@ export default function CalendarPage() {
           <div className="empty">{t('cal.day_empty')}</div>
         ) : (
           <ul className="cal-day-list">
-            {selectedList.map((b) => (
-              <li key={b.id} className="cal-day-item">
-                <div className="cal-day-time">{fmtTime(b.startTime)}<span>{fmtTime(b.endTime)}</span></div>
-                <div className="cal-day-body">
-                  <div className="cal-day-title">{b.title}</div>
-                  <div className="cal-day-meta">{b.resource?.name ?? (b.type === 'ONLINE' ? t('common.online') : '—')}</div>
-                </div>
-                <span className={`swatch ${SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span>
-              </li>
-            ))}
+            {selectedList.map((b) => {
+              // Only the person who arranged it may change it, and only while
+              // it is still ahead — the API enforces both, this just avoids
+              // offering an action that would be refused.
+              const mine = b.bookerId === user?.id || b.principalId === user?.id;
+              const editable = mine && new Date(b.endTime) > new Date();
+              return (
+                <li key={b.id} className="cal-day-item">
+                  <div className="cal-day-time">{fmtTime(b.startTime)}<span>{fmtTime(b.endTime)}</span></div>
+                  <div className="cal-day-body">
+                    <div className="cal-day-title">{b.title}</div>
+                    <div className="cal-day-meta">{b.resource?.name ?? (b.type === 'ONLINE' ? t('common.online') : '—')}</div>
+                    {editable ? (
+                      <button type="button" className="link" onClick={() => setEditing(b)}>{t('common.edit')}</button>
+                    ) : null}
+                  </div>
+                  <span className={`swatch ${SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {editing ? (
+        <EditBookingModal booking={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
+      ) : null}
     </div>
   );
 }

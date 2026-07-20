@@ -60,6 +60,13 @@ export class CreateBookingDto {
   @Type(() => ParticipantDto)
   participants?: ParticipantDto[];
 
+  /**
+   * Whether to tell the participants. Defaults to true — the surprising
+   * outcome is a silent invite, so silence has to be asked for explicitly.
+   */
+  @IsOptional() @IsBoolean()
+  notify?: boolean;
+
   @IsOptional() @IsArray()
   reminders?: unknown[];
 

@@ -1,16 +1,20 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
-import type { Resource, Booking } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import type { Resource, Booking, Participant } from '@/lib/types';
 import { todayLocal, zonedToUtcIso, getTenantTz, tzLabel } from '@/lib/format';
+import Participants from '@/components/Participants';
 
 type Filter = 'ALL' | 'ROOM' | 'DESK';
 
 export default function BookPage() {
   const { t } = useI18n();
   const { push } = useToast();
+  const router = useRouter();
   const [resources, setResources] = useState<Resource[]>([]);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [q, setQ] = useState('');
@@ -77,28 +81,56 @@ export default function BookPage() {
         </div>
       )}
 
-      {active ? <BookingModal resource={active} onClose={() => setActive(null)} onBooked={(msg) => { push(msg, 'success'); setActive(null); }} /> : null}
+      {active ? (
+        <BookingModal resource={active} onClose={() => setActive(null)}
+          onBooked={(msg, dayKey) => {
+            push(msg, 'success');
+            setActive(null);
+            // Land on the calendar showing the day just booked, so the result
+            // of the action is visible instead of only announced in a toast.
+            router.push(`/calendar?d=${dayKey}`);
+          }} />
+      ) : null}
     </div>
   );
 }
 
-function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onClose: () => void; onBooked: (msg: string) => void }) {
+function BookingModal({ resource, onClose, onBooked }: {
+  resource: Resource; onClose: () => void; onBooked: (msg: string, dayKey: string) => void;
+}) {
   const { t } = useI18n();
   const { push } = useToast();
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(todayLocal());
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('10:00');
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  // The invite step is a real decision, so it gets its own screen rather than
+  // a checkbox buried under the fold.
+  const [step, setStep] = useState<'form' | 'confirm'>('form');
+  const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Back out of the confirmation first, so a stray Esc cannot discard a
+      // filled-in form.
+      if (step === 'confirm') setStep('form');
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, step]);
 
-  async function confirm(e: React.FormEvent) {
+  function next(e: React.FormEvent) {
     e.preventDefault();
+    if (participants.length > 0) { setStep('confirm'); return; }
+    void submit();
+  }
+
+  async function submit() {
     setBusy(true);
     try {
       const res = await api.post<Booking>('/bookings', {
@@ -106,18 +138,67 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
         resourceId: resource.id,
         startTime: zonedToUtcIso(date, start, getTenantTz()),
         endTime: zonedToUtcIso(date, end, getTenantTz()),
+        ...(participants.length ? { participants, notify } : {}),
       });
-      onBooked(res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed'));
+      const base = res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed');
+      const n = res.invites?.notified ?? 0;
+      onBooked(n > 0 ? `${base} ${t('book.toast_notified').replace('{n}', String(n))}` : base, date);
     } catch (e: any) {
       push(e?.message || t('book.toast_fail'), 'error');
+      setStep('form');
     } finally {
       setBusy(false);
     }
   }
 
+  const internal = participants.filter((p) => !p.external);
+  const external = participants.filter((p) => p.external);
+
+  if (step === 'confirm') {
+    return (
+      <div className="overlay" onClick={onClose}>
+        <div className="modal modal-sm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div className="modal-head">
+            <h3>{t('invite.title')}</h3>
+            <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
+          </div>
+          <p className="modal-sub">{t('invite.sub').replace('{n}', String(participants.length))}</p>
+
+          <ul className="invite-list">
+            {participants.map((p) => (
+              <li key={p.email}>
+                <span>{p.name || p.email}</span>
+                {p.external ? <em>{t('part.external')}</em> : null}
+              </li>
+            ))}
+          </ul>
+
+          <label className="check-row">
+            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+            <span>{t('invite.send')}</span>
+          </label>
+
+          {notify && internal.length > 0 ? (
+            <div className="info-box">{t('invite.inapp').replace('{n}', String(internal.length))}</div>
+          ) : null}
+          {notify && external.length > 0 ? (
+            <div className="warn-box">{t('invite.email_pending').replace('{n}', String(external.length))}</div>
+          ) : null}
+
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={() => setStep('form')}>{t('common.back')}</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>
+              {busy ? <span className="spinner" /> : t('invite.confirm')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overlay" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={confirm}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={next}>
         <div className="modal-head">
           <h3>{t('modal.new_booking')}</h3>
           <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
@@ -142,9 +223,14 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
           </div>
         </div>
         <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')} ({tzLabel(getTenantTz())})</div>
+
+        <Participants value={participants} onChange={setParticipants} selfEmail={user?.email} />
+
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="btn btn-primary" disabled={busy}>{busy ? <span className="spinner" /> : t('modal.confirm')}</button>
+          <button className="btn btn-primary" disabled={busy}>
+            {busy ? <span className="spinner" /> : participants.length ? t('modal.review') : t('modal.confirm')}
+          </button>
         </div>
       </form>
     </div>

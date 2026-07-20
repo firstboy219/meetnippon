@@ -45,5 +45,7 @@ export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
   post: <T>(path: string, data?: unknown, auth = true) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(data ?? {}) }, auth),
+  patch: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(data ?? {}) }),
   publicGet: <T>(path: string) => request<T>(path, { method: 'GET' }, false),
 };

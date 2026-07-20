@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE, plus UI-1 (hardening), TZ-1 (per-tenant timezone), CAL-1 (Kalender & Riwayat), LOC-1 (Lokasi & Denah admin).
+## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE, plus UI-1 (hardening), TZ-1 (per-tenant timezone), CAL-1 (Kalender & Riwayat), LOC-1 (Lokasi & Denah admin), UP-1 (upload), UX-1 (alur booking).
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
@@ -34,6 +34,38 @@
 | CAL-1 | Calendar (Kalender) + History (Riwayat) views, booking list filters | ✅ DONE (2026-07-20) |
 | LOC-1 | Admin Locations & floor plans (Denah) + geofence UI | ✅ DONE (2026-07-20) |
 | UP-1 | Image upload (floor plans), verify gate, stray-data cleanup | ✅ DONE (2026-07-20) |
+| UX-1 | Booking flow: participants + invite confirmation, edit, post-book redirect | ✅ DONE (2026-07-20) |
+
+---
+
+## UX-1 — Booking flow rework — DONE (2026-07-20)
+
+Owner reviewed the user portal and named four expectations. Three were genuinely absent. **100/100 tests pass** (9 new).
+
+**Audit result**
+| Expected | Was |
+|---|---|
+| New user gets guidance | Present (7-step tour) — but it predated Kalender & Riwayat, so it taught a nav that no longer existed |
+| Confirmation before notifying participants | **Absent.** The API accepted `participants`; the UI never collected them and nothing was ever sent |
+| Land on the calendar after booking | **Absent.** A toast fired and the user stayed on /book |
+| Author can edit a meeting | **Absent.** There was no update endpoint at all — only create, cancel, check-in |
+
+**API**
+- **`PATCH /bookings/:id`** — re-runs the same policy gate as create, because an edit can move a slot anywhere a create could have. Owner-or-admin only. Times must be sent as a **pair** (validating a half-updated slot is meaningless). Conflict detection now takes an `excludeBookingId`, so a booking no longer collides with itself. A finished booking cannot be edited; one already under way can have its details corrected but not its time. **Moving an approved booking in an approval-required room resets it to PENDING and reissues the approval steps** — the decision was about the old slot.
+- **`GET /users/directory`** — a minimal colleague list (id, name, email, department) for any authenticated member, since you cannot invite someone you cannot look up. Deliberately not admin-only, and deliberately narrower than the admin user API. Also unblocks the deferred chat member-picker.
+- **Participant invites** — internal participants get a real in-app notification on create and on reschedule; the response carries `{notified, unreachable}` so the UI can state what actually happened. `notify: false` opts out. A title-only edit notifies nobody.
+
+**Web**
+- Booking modal gained a **participant picker** (directory search + typed external addresses) and a **second confirmation screen** listing exactly who will be told, with an explicit opt-out. Esc backs out of the confirmation before it closes the dialog, so a stray keypress cannot discard a filled-in form.
+- **After booking, the portal navigates to `/calendar?d=<day>`** — the result becomes visible rather than merely announced.
+- **Edit** is reachable from both the calendar day panel and My Bookings, sharing one `EditBookingModal`. It only appears for the author on a booking that has not ended; the API enforces the same, so the UI is just not offering a refused action. It warns before an edit that would trigger re-approval, and before one that will notify guests.
+- Tour rewritten: added a Calendar & History step, and the booking/My-Bookings steps now describe invites and editing.
+
+**Honest limitation — external invitees are not emailed.** There is no mail transport in the platform at all (no nodemailer, no SMTP host running; `SMTP_HOST=mailpit` points at a container that does not exist). External participants are stored on the booking and counted as `unreachable`, and the confirmation screen says plainly that they must be told another way. Wiring real delivery needs SMTP credentials — an owner decision, escalation condition 1.
+
+**Verified live** — directory reachable by an employee and 401 without a token, exposing no role/password fields; create with one internal + one external returns `{notified:1, unreachable:1}` and the colleague's inbox shows the invite; `notify:false` leaves the unread count unchanged; author can rename and move; a move re-notifies; a different employee editing gets **403**; a half time-pair gets **400**; `/calendar?d=`, `/book`, `/bookings`, `/history` all 200. Smoke bookings cancelled afterwards; co-hosted apps untouched; `nginx -t` clean.
+
+**Noted, not acted on** — the tenant directory shows leftover test users (`Emp Smoke`, `Bob Builder`) from earlier sessions. Harmless, but they appear in the participant picker; removing them is prod data deletion and therefore an owner call.
 
 ---
 

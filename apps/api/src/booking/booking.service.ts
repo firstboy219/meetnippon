@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { NotificationService } from '../notification/notification.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { PolicyResolverService } from './policy/policy-resolver.service';
 import { DEFAULT_RULES, PolicyRules } from './policy/policy.types';
@@ -21,6 +22,7 @@ import {
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 import { addLocalDays, startOfDayInTz } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
@@ -33,6 +35,7 @@ export class BookingService {
     private readonly audit: AuditService,
     private readonly resolver: PolicyResolverService,
     private readonly calendar: CalendarService,
+    private readonly notifications: NotificationService,
   ) {}
 
   private caller() {
@@ -45,11 +48,55 @@ export class BookingService {
     return tenantTimezone(this.prisma);
   }
 
+  /**
+   * Tell colleagues they were invited, or that a meeting they are on has moved.
+   *
+   * Only participants who are users of this tenant can be reached: an in-app
+   * notification has nowhere to land for an external email address. Those are
+   * stored on the booking and wait on outbound email (needs SMTP), so this
+   * deliberately reports how many it could not reach rather than pretending.
+   */
+  private async notifyParticipants(
+    booking: { id: string; title: string },
+    participants: { userId?: string; email: string }[],
+    kind: 'invited' | 'moved',
+  ): Promise<{ notified: number; unreachable: number }> {
+    const tenantId = getTenantStore()?.tenantId;
+    const callerId = this.caller().userId;
+    if (!tenantId || participants.length === 0) {
+      return { notified: 0, unreachable: 0 };
+    }
+
+    const emails = participants.map((p) => p.email).filter(Boolean);
+    const ids = participants.map((p) => p.userId).filter(Boolean) as string[];
+    const users = await this.prisma.scoped.user.findMany({
+      where: { OR: [{ id: { in: ids } }, { email: { in: emails } }], isActive: true },
+      select: { id: true },
+    });
+
+    const targets = users.map((u) => u.id).filter((id) => id !== callerId);
+    for (const userId of targets) {
+      await this.notifications.notify(tenantId, userId, {
+        type: 'calendar',
+        title:
+          kind === 'invited'
+            ? `You were invited to "${booking.title}"`
+            : `"${booking.title}" was rescheduled`,
+        deepLink: '/calendar',
+      });
+    }
+    return {
+      notified: targets.length,
+      unreachable: Math.max(0, participants.length - users.length),
+    };
+  }
+
   /** Any active booking whose (buffered) window overlaps the given slot. */
   private async hasConflict(
     resourceId: string,
     slot: Slot,
     bufferMinutes: number,
+    excludeBookingId?: string,
   ): Promise<boolean> {
     const bufMs = bufferMinutes * 60000;
     const start = new Date(slot.start.getTime() - bufMs);
@@ -58,6 +105,8 @@ export class BookingService {
       where: {
         resourceId,
         status: { in: ACTIVE_STATES as any },
+        // An edit must not collide with the booking being edited.
+        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
         startTime: { lt: end },
         endTime: { gt: start },
       },
@@ -209,7 +258,17 @@ export class BookingService {
       });
     }
 
-    return dto.recurrence ? { groupId, count: created.length, bookings: created } : created[0];
+    const invites = dto.notify === false
+      ? { notified: 0, unreachable: 0 }
+      : await this.notifyParticipants(
+        created[0],
+        (dto.participants ?? []) as { userId?: string; email: string }[],
+        'invited',
+      );
+
+    return dto.recurrence
+      ? { groupId, count: created.length, bookings: created, invites }
+      : { ...created[0], invites };
   }
 
   listMine(q: ListBookingsQueryDto = {}) {
@@ -250,6 +309,119 @@ export class BookingService {
     });
     if (!booking) throw new NotFoundException('Booking not found.');
     return booking;
+  }
+
+  /**
+   * Edit an existing booking. Re-runs the same policy gate as create, because
+   * an edit can move a slot anywhere a create could have put it.
+   */
+  async update(id: string, dto: UpdateBookingDto) {
+    const caller = this.caller();
+    const booking = await this.prisma.scoped.booking.findUnique({ where: { id } });
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    const isOwner =
+      booking.principalId === caller.userId || booking.bookerId === caller.userId;
+    if (!isOwner && caller.role !== 'ADMIN') {
+      throw new ForbiddenException('You can only edit your own bookings.');
+    }
+    if (!ACTIVE_STATES.includes(booking.status as any)) {
+      throw new BadRequestException(
+        `A ${booking.status.toLowerCase()} booking can no longer be edited.`,
+      );
+    }
+
+    const now = new Date();
+    // Once a meeting has finished there is nothing left to arrange; a booking
+    // already under way may still have its details corrected, but not its time.
+    if (booking.endTime <= now) {
+      throw new BadRequestException('This booking has already ended.');
+    }
+
+    const movingTime = dto.startTime !== undefined || dto.endTime !== undefined;
+    const movingRoom = dto.resourceId !== undefined && dto.resourceId !== booking.resourceId;
+    if (movingTime && (dto.startTime === undefined || dto.endTime === undefined)) {
+      throw new BadRequestException('Send startTime and endTime together.');
+    }
+    if ((movingTime || movingRoom) && booking.startTime <= now) {
+      throw new BadRequestException('This booking has already started; its time cannot be changed.');
+    }
+
+    const tz = await this.tenantTz();
+    const resourceId = dto.resourceId ?? booking.resourceId;
+    let resource: { id: string; category: string | null } | null = null;
+    if (resourceId) {
+      const r = await this.prisma.scoped.resource.findUnique({ where: { id: resourceId } });
+      if (!r) throw new NotFoundException('Resource not found.');
+      if (r.status !== 'ACTIVE') throw new BadRequestException('Resource is not active.');
+      resource = { id: r.id, category: r.category };
+    }
+    const rules: PolicyRules = resource
+      ? await this.resolver.resolveForResource(resource)
+      : DEFAULT_RULES;
+
+    if (!rules.allowExternalParticipants && (dto.participants ?? []).some((p) => p.external)) {
+      throw new BadRequestException('External participants are not allowed for this resource.');
+    }
+
+    const slot: Slot = {
+      start: dto.startTime ? new Date(dto.startTime) : booking.startTime,
+      end: dto.endTime ? new Date(dto.endTime) : booking.endTime,
+    };
+
+    if (movingTime || movingRoom) {
+      const err = validateSlot(slot, rules, now, tz);
+      if (err) throw new BadRequestException(err);
+      if (resource && await this.hasConflict(resource.id, slot, rules.bufferMinutes, id)) {
+        throw new ConflictException('Time slot conflicts with an existing booking.');
+      }
+    }
+
+    // Moving a booking into a room that requires approval — or moving an
+    // already-approved one to a new time — invalidates the decision that was
+    // made about the old slot, so it goes back through approval.
+    const needsReapproval =
+      rules.requiresApproval && (movingTime || movingRoom) && booking.status === 'APPROVED';
+
+    const updated = await this.prisma.scoped.booking.update({
+      where: { id },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.meetingLink !== undefined ? { meetingLink: dto.meetingLink } : {}),
+        ...(dto.participants !== undefined ? { participants: dto.participants as any } : {}),
+        ...(dto.resourceId !== undefined ? { resourceId: dto.resourceId } : {}),
+        ...(movingTime ? { startTime: slot.start, endTime: slot.end } : {}),
+        ...(needsReapproval ? { status: 'PENDING' as any } : {}),
+      },
+    });
+
+    if (needsReapproval) {
+      await this.prisma.scoped.approvalStep.deleteMany({ where: { bookingId: id } });
+      await this.createApprovalSteps(id, rules.approverIds);
+    }
+
+    await this.audit.log({
+      action: 'booking.update',
+      entity: 'Booking',
+      entityId: id,
+      metadata: {
+        movedTime: movingTime,
+        movedRoom: movingRoom,
+        reapproval: needsReapproval,
+      },
+    });
+
+    // Whoever is on the booking now — the edited list if one was sent, the
+    // stored one otherwise — is told when the meeting actually moves.
+    const audience = (dto.participants ?? updated.participants ?? []) as {
+      userId?: string; email: string;
+    }[];
+    const invites = (movingTime || movingRoom) && dto.notify !== false
+      ? await this.notifyParticipants(updated, audience, 'moved')
+      : { notified: 0, unreachable: 0 };
+
+    return { ...updated, invites };
   }
 
   async cancel(id: string, reason?: string) {

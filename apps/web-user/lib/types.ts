@@ -36,15 +36,35 @@ export interface Resource {
   floor?: { name: string; building?: { name: string } | null } | null;
 }
 
+export interface DirectoryUser {
+  id: string; fullName: string; email: string; department: string | null;
+}
+
+export interface Participant {
+  userId?: string;
+  email: string;
+  /** display only — the API stores userId/email */
+  name?: string;
+  external?: boolean;
+}
+
+/** How many invitees the API could actually reach in-app. */
+export interface InviteResult { notified: number; unreachable: number }
+
 export interface Booking {
   id: string;
   title: string;
+  description?: string | null;
   type: 'OFFLINE' | 'ONLINE' | 'HYBRID';
   resourceId: string | null;
   startTime: string;
   endTime: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' | 'WAITLIST';
   resource?: { name: string; type: string } | null;
+  participants?: Participant[];
+  bookerId?: string;
+  principalId?: string;
+  invites?: InviteResult;
 }
 
 export interface ExternalTask {

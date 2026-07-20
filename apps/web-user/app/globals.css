@@ -269,6 +269,39 @@ tr:last-child td { border-bottom: none; }
   border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- Participant picker ---------- */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 11px;
+  border-radius: 100px; background: var(--teal-tint); color: var(--teal-dark);
+  font-size: 12px; font-weight: 600; }
+.chip em { font-style: normal; font-size: 10px; font-weight: 700; opacity: .7; text-transform: uppercase; }
+.chip.chip-ext { background: var(--amber-tint); color: #8A5A0A; }
+.chip button { width: 17px; height: 17px; border: none; border-radius: 50%; cursor: pointer;
+  background: rgba(0,0,0,.09); color: inherit; font-size: 13px; line-height: 1; padding: 0; }
+.chip button:hover { background: rgba(0,0,0,.18); }
+
+.picker { position: relative; }
+.picker-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: #fff; border: 1px solid var(--line); border-radius: 11px;
+  box-shadow: 0 10px 28px rgba(20,22,26,.14); overflow: hidden; max-height: 232px; overflow-y: auto; }
+.picker-item { display: block; width: 100%; text-align: left; padding: 9px 13px; border: none;
+  background: none; cursor: pointer; font: inherit; }
+.picker-item:hover { background: var(--teal-tint); }
+.picker-name { display: block; font-size: 13px; font-weight: 600; }
+.picker-sub { display: block; font-size: 11.5px; color: var(--ink-soft); margin-top: 1px; }
+
+.invite-list { list-style: none; margin-bottom: 14px; border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden; max-height: 176px; overflow-y: auto; }
+.invite-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 13px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.invite-list li:last-child { border-bottom: none; }
+.invite-list em { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: #8A5A0A; background: var(--amber-tint); padding: 2px 7px; border-radius: 100px; }
+
+.check-row { display: flex; align-items: center; gap: 9px; font-size: 13px; margin: 2px 0 14px; cursor: pointer; }
+.check-row input { width: 15px; height: 15px; accent-color: var(--teal); }
+.row-actions { display: flex; gap: 8px; }
+
 /* ---------- Calendar ---------- */
 .cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .cal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px;

@@ -5,11 +5,14 @@ import { useI18n } from '@/lib/i18n';
 
 const KEY = 'mn_tour_v1';
 
+// Display order, not key order: the calendar step was added after the original
+// seven, so it slots in by position rather than by renumbering the rest.
 const STEPS = [
   { icon: '👋', k: 's1' },
   { icon: '🏠', k: 's2' },
   { icon: '🔎', k: 's3' },
   { icon: '📋', k: 's4' },
+  { icon: '📅', k: 'scal' },
   { icon: '✅', k: 's5' },
   { icon: '💬', k: 's6' },
   { icon: '🌐', k: 's7' },

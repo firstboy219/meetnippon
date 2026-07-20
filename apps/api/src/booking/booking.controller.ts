@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,6 +14,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { CancelBookingDto, CheckInDto } from './dto/cancel-booking.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -38,6 +40,11 @@ export class BookingController {
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.bookings.getOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateBookingDto) {
+    return this.bookings.update(id, dto);
   }
 
   @Post(':id/cancel')

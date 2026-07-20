@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { Booking } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
+import EditBookingModal from '@/components/EditBookingModal';
 
 const SWATCH: Record<string, string> = {
   APPROVED: 'available', COMPLETED: 'available', PENDING: 'pending',
@@ -20,6 +21,7 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Booking | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -84,7 +86,10 @@ export default function BookingsPage() {
                 <td><span className={`swatch ${SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span></td>
                 <td>
                   {CANCELLABLE.includes(b.status) ? (
-                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(b.id)}>{t('common.cancel')}</button>
+                    <div className="row-actions">
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(b)}>{t('common.edit')}</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(b.id)}>{t('common.cancel')}</button>
+                    </div>
                   ) : <span style={{ color: 'var(--ink-soft)' }}>—</span>}
                 </td>
               </tr>
@@ -94,6 +99,10 @@ export default function BookingsPage() {
       )}
       {confirmId ? (
         <ConfirmCancel busy={busy} onClose={() => setConfirmId(null)} onConfirm={() => cancel(confirmId)} />
+      ) : null}
+      {editing ? (
+        <EditBookingModal booking={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
       ) : null}
     </div>
   );
