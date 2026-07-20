@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { Resource, Booking } from '@/lib/types';
-import { todayUtc } from '@/lib/format';
+import { todayLocal, zonedToUtcIso, getTenantTz, tzLabel } from '@/lib/format';
 
 type Filter = 'ALL' | 'ROOM' | 'DESK';
 
@@ -86,7 +86,7 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
   const { t } = useI18n();
   const { push } = useToast();
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState(todayUtc());
+  const [date, setDate] = useState(todayLocal());
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('10:00');
   const [busy, setBusy] = useState(false);
@@ -104,8 +104,8 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
       const res = await api.post<Booking>('/bookings', {
         title,
         resourceId: resource.id,
-        startTime: `${date}T${start}:00.000Z`,
-        endTime: `${date}T${end}:00.000Z`,
+        startTime: zonedToUtcIso(date, start, getTenantTz()),
+        endTime: zonedToUtcIso(date, end, getTenantTz()),
       });
       onBooked(res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed'));
     } catch (e: any) {
@@ -141,7 +141,7 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
             <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
           </div>
         </div>
-        <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')}</div>
+        <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')} ({tzLabel(getTenantTz())})</div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
           <button className="btn btn-primary" disabled={busy}>{busy ? <span className="spinner" /> : t('modal.confirm')}</button>

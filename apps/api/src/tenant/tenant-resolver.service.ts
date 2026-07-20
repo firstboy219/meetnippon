@@ -6,6 +6,8 @@ import { runUnscoped } from './tenant-context';
 export interface ResolvedTenant {
   tenantId: string;
   tenantName: string;
+  /** IANA zone the tenant's wall clock runs on. */
+  timezone: string;
   isActive: boolean;
 }
 
@@ -60,12 +62,13 @@ export class TenantResolverService {
       // 1) custom verified domain
       const domain = await this.prisma.tenantDomain.findFirst({
         where: { domain: h, status: 'VERIFIED' },
-        select: { tenant: { select: { id: true, name: true, isActive: true } } },
+        select: { tenant: { select: { id: true, name: true, timezone: true, isActive: true } } },
       });
       if (domain?.tenant) {
         return {
           tenantId: domain.tenant.id,
           tenantName: domain.tenant.name,
+          timezone: domain.tenant.timezone,
           isActive: domain.tenant.isActive,
         };
       }
@@ -82,12 +85,13 @@ export class TenantResolverService {
 
       const branding = await this.prisma.tenantBranding.findUnique({
         where: { subdomain: sub },
-        select: { tenant: { select: { id: true, name: true, isActive: true } } },
+        select: { tenant: { select: { id: true, name: true, timezone: true, isActive: true } } },
       });
       if (branding?.tenant) {
         return {
           tenantId: branding.tenant.id,
           tenantName: branding.tenant.name,
+          timezone: branding.tenant.timezone,
           isActive: branding.tenant.isActive,
         };
       }
@@ -102,10 +106,10 @@ export class TenantResolverService {
     return runUnscoped(async () => {
       const tenant = await this.prisma.tenant.findUnique({
         where: { slug: s },
-        select: { id: true, name: true, isActive: true },
+        select: { id: true, name: true, timezone: true, isActive: true },
       });
       return tenant
-        ? { tenantId: tenant.id, tenantName: tenant.name, isActive: tenant.isActive }
+        ? { tenantId: tenant.id, tenantName: tenant.name, timezone: tenant.timezone, isActive: tenant.isActive }
         : null;
     });
   }

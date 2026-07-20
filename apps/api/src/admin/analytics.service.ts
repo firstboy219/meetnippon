@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
+import { startOfDayInTz } from '../common/tz.util';
+import { tenantTimezone } from '../common/tenant-tz';
 
 /** Read-only tenant analytics for the admin dashboard (BRD Phase 7). */
 @Injectable()
@@ -12,7 +10,7 @@ export class AnalyticsService {
 
   async overview() {
     const since30 = new Date(Date.now() - 30 * 86400000);
-    const today = startOfUtcDay(new Date());
+    const today = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
 
     const [byStatus, byType, last30, topRaw, wfhToday] = await Promise.all([
       this.prisma.scoped.booking.groupBy({ by: ['status'], _count: { _all: true } }),

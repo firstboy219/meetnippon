@@ -32,6 +32,7 @@ export class TenantController {
     return {
       tenantId: resolved.tenantId,
       tenantName: resolved.tenantName,
+      timezone: resolved.timezone,
       displayName: branding?.displayName ?? null,
       primaryColor: branding?.primaryColor ?? '#0E6E55',
       accentColor: branding?.accentColor ?? '#E4572E',

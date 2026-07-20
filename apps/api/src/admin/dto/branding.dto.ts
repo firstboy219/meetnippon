@@ -8,4 +8,6 @@ export class UpdateBrandingDto {
   @IsOptional() @IsString() loginBgUrl?: string;
   @IsOptional() @IsIn(['SUBDOMAIN', 'SHARED_URL']) accessMode?: 'SUBDOMAIN' | 'SHARED_URL';
   @IsOptional() @IsString() subdomain?: string;
+  /** IANA zone, e.g. "Asia/Jakarta". Validated against Intl before saving. */
+  @IsOptional() @IsString() timezone?: string;
 }

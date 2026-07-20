@@ -176,10 +176,14 @@ export class AuthService {
           languagePref: true,
           department: true,
           tenantId: true,
+          // The portal renders every time on this clock; branding is not a
+          // reliable carrier for it (shared-URL hosts resolve no tenant).
+          tenant: { select: { timezone: true } },
         },
       }),
     );
     if (!user) throw new UnauthorizedException();
-    return user;
+    const { tenant, ...rest } = user;
+    return { ...rest, timezone: tenant?.timezone ?? 'UTC' };
   }
 }

@@ -189,6 +189,11 @@ const DICT: Record<string, { en: string; id: string }> = {
   'brand.tagline': { en: 'Room & Desk Booking', id: 'Booking Ruang & Desk' },
   'brand.primary_chip': { en: 'Primary', id: 'Utama' },
   'brand.accent_chip': { en: 'Accent', id: 'Aksen' },
+  'brand.timezone': { en: 'Timezone', id: 'Zona waktu' },
+  'brand.timezone_hint': {
+    en: 'Sets the workspace clock: business hours, weekday rules and daily quotas are evaluated in this zone, and all times are displayed in it.',
+    id: 'Menentukan jam workspace: jam kerja, aturan hari kerja, dan kuota harian dihitung pada zona ini, dan semua waktu ditampilkan mengikutinya.',
+  },
 
   'int.title': { en: 'Integrations', id: 'Integrasi' },
   'int.info': { en: 'Providers run in mock mode until real credentials are added. Mock SSO lets you test sign-in by entering an email on a consent prompt. Set mode to live and add a client ID once your Azure/Google app is registered (the client secret is configured on the server).', id: 'Provider berjalan dalam mode mock sampai kredensial asli ditambahkan. SSO mock memungkinkan uji coba masuk dengan memasukkan email pada halaman persetujuan. Ubah mode ke live dan tambahkan Client ID setelah aplikasi Azure/Google Anda terdaftar (client secret dikonfigurasi di server).' },

@@ -62,7 +62,7 @@ const DICT: Dict = {
   'modal.date': { en: 'Date', id: 'Tanggal' },
   'modal.start': { en: 'Start', id: 'Mulai' },
   'modal.end': { en: 'End', id: 'Selesai' },
-  'modal.tz_hint': { en: 'Times are in workspace time (UTC).', id: 'Waktu mengikuti zona waktu workspace (UTC).' },
+  'modal.tz_hint': { en: 'Times are in workspace time.', id: 'Waktu mengikuti zona waktu workspace.' },
   'modal.confirm': { en: 'Confirm booking', id: 'Konfirmasi booking' },
   'bookings.title': { en: 'My Bookings', id: 'Booking Saya' },
   'bookings.when': { en: 'When', id: 'Waktu' },

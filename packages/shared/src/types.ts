@@ -16,6 +16,8 @@ export interface AccessTokenPayload {
 export interface PublicBranding {
   tenantId: string;
   tenantName: string;
+  /** IANA zone; the wall clock all times are shown and entered in. */
+  timezone: string;
   displayName: string | null;
   primaryColor: string;
   accentColor: string;

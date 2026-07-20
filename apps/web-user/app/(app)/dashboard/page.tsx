@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import type { Booking } from '@/lib/types';
-import { fmtTime, fmtDate, todayUtc } from '@/lib/format';
+import { fmtTime, fmtDate, todayLocal, localDateKey, getTenantTz } from '@/lib/format';
 
 const STATUS_SWATCH: Record<string, string> = {
   APPROVED: 'available', PENDING: 'pending', WAITLIST: 'pending',
@@ -26,12 +26,13 @@ export default function DashboardPage() {
   useEffect(() => { load(); }, [load]);
 
   const stats = useMemo(() => {
-    const today = todayUtc();
+    const tz = getTenantTz();
+    const today = todayLocal(tz);
     const now = Date.now();
     const weekEnd = now + 7 * 86400000;
     const active = bookings.filter((b) => ['APPROVED', 'PENDING', 'WAITLIST'].includes(b.status));
     return {
-      today: active.filter((b) => b.startTime.slice(0, 10) === today).length,
+      today: active.filter((b) => localDateKey(b.startTime, tz) === today).length,
       week: active.filter((b) => { const s = +new Date(b.startTime); return s >= now && s <= weekEnd; }).length,
       pending: bookings.filter((b) => b.status === 'PENDING').length,
     };

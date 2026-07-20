@@ -4,6 +4,13 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { Branding } from '@/lib/types';
+import { setTenantTz, tzLabel } from '@/lib/format';
+
+const TIMEZONES = [
+  'Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura', 'Asia/Singapore', 'Asia/Tokyo',
+  'Asia/Kuala_Lumpur', 'Asia/Bangkok', 'Asia/Manila', 'Asia/Ho_Chi_Minh', 'Asia/Hong_Kong',
+  'Australia/Sydney', 'Europe/London', 'America/New_York', 'UTC',
+];
 
 export default function BrandingPage() {
   const { t } = useI18n();
@@ -14,6 +21,7 @@ export default function BrandingPage() {
   const [subdomain, setSubdomain] = useState('');
   const [accessMode, setAccessMode] = useState<'SUBDOMAIN' | 'SHARED_URL'>('SHARED_URL');
   const [logoUrl, setLogoUrl] = useState('');
+  const [timezone, setTimezone] = useState('UTC');
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
@@ -28,6 +36,8 @@ export default function BrandingPage() {
         setSubdomain(b.subdomain ?? '');
         setAccessMode(b.accessMode ?? 'SHARED_URL');
         setLogoUrl(b.logoUrl ?? '');
+        setTimezone(b.timezone ?? 'UTC');
+        setTenantTz(b.timezone);
       }
     }).catch(() => setErr(true)).finally(() => setLoaded(true));
   }, []);
@@ -39,7 +49,9 @@ export default function BrandingPage() {
       await api.put('/admin/branding', {
         displayName: displayName || undefined, primaryColor, accentColor,
         subdomain: subdomain || undefined, accessMode, logoUrl: logoUrl || undefined,
+        timezone,
       });
+      setTenantTz(timezone);
       push(t('brand.saved'), 'success');
     } catch (e: any) { push(e?.message || t('common.save_failed'), 'error'); }
     finally { setBusy(false); }
@@ -77,6 +89,14 @@ export default function BrandingPage() {
               </select>
             </div>
             <div className="f-group"><label className="f-label">{t('brand.subdomain')}</label><input className="f-input" value={subdomain} onChange={(e) => setSubdomain(e.target.value)} placeholder="nipsea" /></div>
+          </div>
+          <div className="f-group"><label className="f-label">{t('brand.timezone')}</label>
+            <select className="f-select" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+              {(TIMEZONES.includes(timezone) ? TIMEZONES : [timezone, ...TIMEZONES]).map((tz) => (
+                <option key={tz} value={tz}>{tz} ({tzLabel(tz)})</option>
+              ))}
+            </select>
+            <div className="f-hint">{t('brand.timezone_hint')}</div>
           </div>
           <button className="btn btn-primary" disabled={busy} style={{ width: '100%' }}>{busy ? <span className="spinner" /> : t('brand.save')}</button>
         </form>

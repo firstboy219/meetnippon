@@ -1,6 +1,7 @@
 'use client';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api, tokenStore } from './api';
+import { setTenantTz } from './format';
 import type { AuthUser, Branding } from './types';
 
 interface AuthCtx {
@@ -32,11 +33,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const b = await api.publicGet<Branding | { tenant: null }>('/tenant/branding');
-        if (b && 'tenantId' in b) { setBranding(b); applyTheme(b); }
+        if (b && 'tenantId' in b) { setTenantTz(b.timezone); setBranding(b); applyTheme(b); }
       } catch { /* branding is best-effort */ }
       if (tokenStore.access) {
         try {
           const me = await api.get<AuthUser>('/auth/me');
+          // Authoritative: branding resolves no tenant on shared-URL hosts.
+          setTenantTz(me.timezone);
           setUser(me);
         } catch { tokenStore.clear(); }
       }
@@ -49,7 +52,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       '/auth/login', { email, password, ...(tenantSlug ? { tenantSlug } : {}) }, false,
     );
     tokenStore.set(res.accessToken, res.refreshToken);
-    setUser(res.user);
+    // /auth/me carries the tenant clock; without it the session would render
+    // in UTC until the next full page load.
+    try {
+      const me = await api.get<AuthUser>('/auth/me');
+      setTenantTz(me.timezone);
+      setUser(me);
+    } catch {
+      setUser(res.user);
+    }
   }, []);
 
   const logout = useCallback(() => {

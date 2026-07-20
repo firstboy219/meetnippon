@@ -19,12 +19,10 @@ import {
 } from './booking.rules';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { addLocalDays, startOfDayInTz } from '../common/tz.util';
+import { tenantTimezone } from '../common/tenant-tz';
 
 const ACTIVE_STATES = ['PENDING', 'APPROVED', 'WAITLIST'] as const;
-
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
 
 @Injectable()
 export class BookingService {
@@ -38,6 +36,11 @@ export class BookingService {
   private caller() {
     const store = getTenantStore();
     return { userId: store?.userId as string, role: store?.role ?? 'EMPLOYEE' };
+  }
+
+  /** The tenant's wall clock — all rule evaluation and day boundaries use it. */
+  private tenantTz(): Promise<string> {
+    return tenantTimezone(this.prisma);
   }
 
   /** Any active booking whose (buffered) window overlaps the given slot. */
@@ -83,6 +86,7 @@ export class BookingService {
     }
     const type = dto.type ?? 'OFFLINE';
     const now = new Date();
+    const tz = await this.tenantTz();
 
     const principal = await this.prisma.scoped.user.findUnique({
       where: { id: principalId },
@@ -117,11 +121,11 @@ export class BookingService {
     }
 
     const base: Slot = { start: new Date(dto.startTime), end: new Date(dto.endTime) };
-    const occurrences = generateOccurrences(base, dto.recurrence);
+    const occurrences = generateOccurrences(base, dto.recurrence, tz);
 
     // 1) pure per-slot validation (duration / advance / business hours)
     for (const slot of occurrences) {
-      const err = validateSlot(slot, rules, now);
+      const err = validateSlot(slot, rules, now, tz);
       if (err) throw new BadRequestException(err);
     }
 
@@ -135,8 +139,8 @@ export class BookingService {
         }
       }
       if (rules.maxBookingsPerUserPerDay > 0) {
-        const dayStart = startOfUtcDay(slot.start);
-        const dayEnd = new Date(dayStart.getTime() + 86400000);
+        const dayStart = startOfDayInTz(slot.start, tz);
+        const dayEnd = addLocalDays(dayStart, 1, tz);
         const existing = await this.prisma.scoped.booking.count({
           where: {
             principalId,
@@ -145,7 +149,7 @@ export class BookingService {
           },
         });
         const sameDayInBatch = occurrences.filter(
-          (o) => startOfUtcDay(o.start).getTime() === dayStart.getTime(),
+          (o) => startOfDayInTz(o.start, tz).getTime() === dayStart.getTime(),
         ).length;
         if (existing + sameDayInBatch > rules.maxBookingsPerUserPerDay) {
           throw new BadRequestException(

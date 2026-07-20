@@ -1,6 +1,7 @@
 'use client';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api, tokenStore } from './api';
+import { setTenantTz } from './format';
 import type { AuthUser } from './types';
 
 interface Ctx {
@@ -18,7 +19,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       if (tokenStore.access) {
-        try { setUser(await api.get<AuthUser>('/auth/me')); }
+        try {
+          const me = await api.get<AuthUser>('/auth/me');
+          // Times across the console render on the tenant's wall clock.
+          setTenantTz(me.timezone);
+          setUser(me);
+        }
         catch { tokenStore.clear(); }
       }
       setReady(true);
@@ -33,7 +39,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('This portal is for administrators only.');
     }
     tokenStore.set(res.accessToken, res.refreshToken);
-    setUser(res.user);
+    try {
+      const me = await api.get<AuthUser>('/auth/me');
+      setTenantTz(me.timezone);
+      setUser(me);
+    } catch {
+      setUser(res.user);
+    }
   }, []);
 
   const logout = useCallback(() => { tokenStore.clear(); setUser(null); window.location.href = '/login'; }, []);

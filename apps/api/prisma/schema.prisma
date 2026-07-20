@@ -114,6 +114,10 @@ model Tenant {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique // internal handle
+  /// IANA zone; the wall clock booking rules and displays are evaluated on.
+  /// Defaults to UTC so existing rows keep their previous behaviour; new
+  /// workspaces are created as Asia/Jakarta by onboarding.
+  timezone    String   @default("UTC")
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

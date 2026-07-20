@@ -8,6 +8,7 @@ import {
   validateSubdomain, extractEmailDomain, isPublicEmailDomain,
 } from '../common/domain.util';
 import { RegisterWorkspaceDto } from './dto/register.dto';
+import { isValidTimeZone } from '../common/tz.util';
 
 /**
  * Self-service onboarding (Phase 10). Creates a brand-new tenant with its first
@@ -44,7 +45,13 @@ export class OnboardingService {
       if (subTaken) throw new BadRequestException('This workspace address is already taken.');
 
       const tenant = await this.prisma.tenant.create({
-        data: { name: dto.orgName.trim(), slug, isActive: true },
+        data: {
+          name: dto.orgName.trim(),
+          slug,
+          isActive: true,
+          // Primary market; admins can change it under Branding.
+          timezone: isValidTimeZone(dto.timezone ?? '') ? (dto.timezone as string) : 'Asia/Jakarta',
+        },
       });
       await this.prisma.tenantBranding.create({
         data: { tenantId: tenant.id, displayName: dto.orgName.trim(), subdomain: slug, accessMode: 'SHARED_URL' },

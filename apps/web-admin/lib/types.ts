@@ -4,6 +4,8 @@ export type Lang = 'en' | 'id';
 export interface AuthUser {
   id: string; email: string; fullName: string; role: UserRole;
   languagePref: 'EN' | 'ID'; tenantId: string;
+  /** Tenant wall clock, served by /auth/me. */
+  timezone?: string;
 }
 
 export interface AdminUser {
@@ -27,6 +29,7 @@ export interface Branding {
   id?: string; displayName: string | null; primaryColor: string; accentColor: string;
   logoUrl: string | null; loginBgUrl: string | null;
   accessMode: 'SUBDOMAIN' | 'SHARED_URL'; subdomain: string | null;
+  timezone: string;
 }
 
 export interface AdminBooking {

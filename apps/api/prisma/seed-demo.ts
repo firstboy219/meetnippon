@@ -12,24 +12,43 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 const SLUG = 'nipsea';
 
-// relative time helpers (UTC)
+// The demo tenant runs on Jakarta time; times below are WIB wall-clock so the
+// seeded day looks like a real office day in the portal, not shifted by 7h.
+const TZ = 'Asia/Jakarta';
 const now = new Date();
+
+/** Wall-clock field values of an instant as seen in TZ. */
+function partsIn(instant: Date) {
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instant);
+  const g = (t: string) => Number(p.find((x) => x.type === t)?.value ?? '0');
+  return { y: g('year'), mo: g('month'), d: g('day'), h: g('hour') % 24, mi: g('minute'), s: g('second') };
+}
+
+/** Offset (ms) to add to a UTC instant to reach the TZ wall clock. */
+function offsetMs(instant: Date) {
+  const p = partsIn(instant);
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(instant.getTime() / 1000) * 1000;
+}
+
+/** The UTC instant whose TZ wall clock is `h:m`, `dayOffset` days from today. */
 const at = (dayOffset: number, h: number, m = 0) => {
-  const d = new Date(now);
-  d.setUTCDate(d.getUTCDate() + dayOffset);
-  d.setUTCHours(h, m, 0, 0);
-  return d;
+  const p = partsIn(now);
+  const target = Date.UTC(p.y, p.mo - 1, p.d + dayOffset, h, m, 0);
+  const guess = new Date(target - offsetMs(now));
+  return new Date(target - offsetMs(guess));
 };
-const startOfDay = (dayOffset: number) => {
-  const d = new Date(now);
-  d.setUTCDate(d.getUTCDate() + dayOffset);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-};
+
+/** Local midnight in TZ, `dayOffset` days from today. */
+const startOfDay = (dayOffset: number) => at(dayOffset, 0, 0);
 
 async function main() {
   const tenant = await prisma.tenant.upsert({
-    where: { slug: SLUG }, update: {},
-    create: { name: 'PT Nipsea', slug: SLUG, isActive: true },
+    where: { slug: SLUG }, update: { timezone: TZ },
+    create: { name: 'PT Nipsea', slug: SLUG, isActive: true, timezone: TZ },
   });
   const T = tenant.id;
   const pw = await argon2.hash('Password123!', { type: argon2.argon2id });

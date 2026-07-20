@@ -4,10 +4,8 @@ import { AuditService } from '../audit/audit.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { classifyLocation, OfficeGeo } from './geo.util';
 import { ReportLocationDto } from './dto/report-location.dto';
-
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
+import { startOfDayInTz } from '../common/tz.util';
+import { tenantTimezone } from '../common/tenant-tz';
 
 /**
  * WFH detection (BRD 7.13). Detects OFFICE vs WFH by matching the device point
@@ -42,7 +40,7 @@ export class WorkLocationService {
     }
 
     const userId = this.userId();
-    const day = startOfUtcDay(new Date());
+    const day = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
     const existing = await this.prisma.scoped.workLocationLog.findFirst({ where: { userId, day } });
     const saved = existing
       ? await this.prisma.scoped.workLocationLog.update({ where: { id: existing.id }, data: { location, officeName } })
@@ -54,7 +52,7 @@ export class WorkLocationService {
 
   async today() {
     const userId = this.userId();
-    const day = startOfUtcDay(new Date());
+    const day = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
     const log = await this.prisma.scoped.workLocationLog.findFirst({ where: { userId, day } });
     return log ?? { location: 'UNKNOWN', officeName: null, day };
   }

@@ -10,6 +10,7 @@ export interface Branding {
   logoUrl: string | null;
   loginBgUrl: string | null;
   accessMode: 'SUBDOMAIN' | 'SHARED_URL';
+  timezone: string;
 }
 
 export interface AuthUser {
@@ -19,6 +20,8 @@ export interface AuthUser {
   role: UserRole;
   languagePref: 'EN' | 'ID';
   tenantId: string;
+  /** Tenant wall clock, served by /auth/me. */
+  timezone?: string;
 }
 
 export interface Resource {
