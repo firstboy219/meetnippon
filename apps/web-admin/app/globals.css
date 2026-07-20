@@ -215,6 +215,10 @@ tr:last-child td { border-bottom: none; }
 
 /* ---------- Floor plan editor ---------- */
 .plan-editor { display: flex; flex-direction: column; gap: 4px; }
+.upload-row { display: flex; gap: 8px; align-items: center; }
+.upload-row .f-input { flex: 1; min-width: 0; }
+.upload-row .btn { flex-shrink: 0; }
+.upload-row .spinner { border-color: rgba(14,110,85,.3); border-top-color: var(--teal); }
 .plan-canvas { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
   background: #F7F6F2; margin-bottom: 16px; line-height: 0; }
 .plan-canvas.placing { cursor: crosshair; box-shadow: 0 0 0 2px var(--teal-tint); border-color: var(--teal); }

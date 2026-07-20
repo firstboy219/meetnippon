@@ -33,6 +33,27 @@
 | TZ-1 | Per-tenant timezone (retires the UTC wall-clock model) | ✅ DONE (2026-07-20) |
 | CAL-1 | Calendar (Kalender) + History (Riwayat) views, booking list filters | ✅ DONE (2026-07-20) |
 | LOC-1 | Admin Locations & floor plans (Denah) + geofence UI | ✅ DONE (2026-07-20) |
+| UP-1 | Image upload (floor plans), verify gate, stray-data cleanup | ✅ DONE (2026-07-20) |
+
+---
+
+## UP-1 — Image upload + build gate — DONE (2026-07-20)
+
+Owner asked for the three items left open at the end of LOC-1. **91/91 tests pass** (10 new).
+
+**1 — Image upload.** `POST /api/uploads` (ADMIN) + `GET /api/uploads/:tenant/:file`. Files land on a host bind mount (`/opt/meetnippon/uploads` → `/app/uploads`) so they survive a container replace; the API container now runs with that volume and `UPLOAD_DIR`.
+- **Served by the API, not nginx.** The API already owns the `/api` prefix, so no nginx rule was added — worth preserving on a shared server where the config is not ours alone.
+- **Content decides the type, not the client.** The declared mimetype is ignored; the leading bytes must match PNG/JPEG/GIF/WebP, and the stored extension comes from that check. HTML wearing a `.png` name is rejected.
+- **SVG is refused outright** — it is an executable document, and serving one from the platform's own origin would let an uploader run script against a console session.
+- Stored names are 128-bit random; the client's filename never reaches disk. 5 MB cap. Serving sets `nosniff` and immutable caching.
+- The serve route pattern-checks both path segments and confirms the resolved path stays under the upload root, so a crafted `..` cannot walk out.
+- **Serving is unauthenticated by design**: an `<img>` cannot carry a bearer token, so access rests on the unguessable name. That is the usual bargain, but it means nothing sensitive belongs in this bucket — recorded here so the next person does not assume otherwise.
+
+**2 — `scripts/verify.sh`** now holds the build gate, replacing ad-hoc SSH one-liners. It tags every image uniquely per run, so a previous run's image can never stand in for a build that just failed (that is precisely how a broken commit passed and then ran its tests against stale code). It also asserts the suite did not change the live `Booking` count.
+
+**3 — Stray data removed** (owner-approved): the two `HQ Smoke` offices from the 2026-07-19 smoke test. Both had NULL coordinates and no buildings, so they never affected geofence classification. The delete was constrained to that name *and* null coordinates *and* zero buildings; `HQ Jakarta` plus 1 building / 5 floors / 11 resources verified intact afterwards. The smoke-test upload was deleted too.
+
+**Verified live** — genuine PNG uploads and serves with the right headers; HTML-as-PNG and SVG both 400; unauthenticated 401 and EMPLOYEE 403; four traversal attempts all fail to return a file; the image still serves after `docker restart` (proving the volume).
 
 ---
 

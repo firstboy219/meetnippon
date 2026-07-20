@@ -452,7 +452,28 @@ function FloorPlanEditor({ floor, onClose, onSaved }: {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const imgRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    // Reset immediately so re-picking the same file still fires a change event.
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { push(t('loc.upload_too_big'), 'error'); return; }
+    setUploading(true);
+    try {
+      const { url } = await api.upload<{ url: string }>('/uploads', f);
+      setImageUrl(url);
+      setImgBroken(false);
+      push(t('loc.upload_ok'), 'success');
+    } catch (err: any) {
+      push(err?.message || t('loc.upload_failed'), 'error');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useEffect(() => {
     api.get<FloorPlan>(`/admin/floors/${floor.id}/plan`)
@@ -505,10 +526,18 @@ function FloorPlanEditor({ floor, onClose, onSaved }: {
       {loading ? <div className="empty">{t('common.loading')}</div> : (
         <div className="plan-editor">
           <div className="f-group">
-            <label className="f-label">{t('loc.plan_url')}</label>
-            <input className="f-input" value={imageUrl} placeholder="https://…"
-              onChange={(e) => { setImageUrl(e.target.value); setImgBroken(false); }} />
-            <div className="f-hint">{t('loc.plan_url_hint')}</div>
+            <label className="f-label">{t('loc.plan_image')}</label>
+            <div className="upload-row">
+              <input className="f-input" value={imageUrl} placeholder="https://…"
+                onChange={(e) => { setImageUrl(e.target.value); setImgBroken(false); }} />
+              <button type="button" className="btn btn-ghost btn-sm" disabled={uploading}
+                onClick={() => fileRef.current?.click()}>
+                {uploading ? <span className="spinner" /> : t('loc.upload')}
+              </button>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+                hidden onChange={onPick} />
+            </div>
+            <div className="f-hint">{t('loc.plan_image_hint')}</div>
           </div>
 
           {imageUrl.trim() ? (

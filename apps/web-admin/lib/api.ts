@@ -28,7 +28,28 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true): Pr
   return body as T;
 }
 
+/**
+ * Multipart POST. The Content-Type header is deliberately omitted so the
+ * browser can set it with the multipart boundary — forcing application/json
+ * here would make the body unparseable on the server.
+ */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const headers: Record<string, string> = {};
+  if (tokenStore.access) headers['Authorization'] = `Bearer ${tokenStore.access}`;
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, headers });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = (body && (body.message || body.error)) || `Upload failed (${res.status})`;
+    throw new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
+  }
+  return body as T;
+}
+
 export const api = {
+  upload,
   get: <T>(p: string) => request<T>(p, { method: 'GET' }),
   post: <T>(p: string, d?: unknown, auth = true) => request<T>(p, { method: 'POST', body: JSON.stringify(d ?? {}) }, auth),
   put: <T>(p: string, d?: unknown) => request<T>(p, { method: 'PUT', body: JSON.stringify(d ?? {}) }),
