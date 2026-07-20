@@ -61,6 +61,11 @@ export interface ChatMessage {
   sender?: { id: string; fullName: string } | null; createdAt: string;
 }
 
+export interface AppNotification {
+  id: string; type: string; title: string; deepLink: string | null;
+  isRead: boolean; createdAt: string;
+}
+
 export interface ApprovalStep {
   id: string;
   level: number;

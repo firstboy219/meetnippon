@@ -17,23 +17,40 @@ export default function BookingsPage() {
   const { push } = useToast();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api.get<Booking[]>('/bookings').then(setBookings).catch(() => {}).finally(() => setLoading(false));
+    setErr(false);
+    setLoading(true);
+    api.get<Booking[]>('/bookings').then(setBookings).catch(() => setErr(true)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
   async function cancel(id: string) {
+    setBusy(true);
     try {
       await api.post(`/bookings/${id}/cancel`, {});
-      push('Booking cancelled.', 'success');
+      push(t('bookings.toast_cancelled'), 'success');
+      setConfirmId(null);
       load();
     } catch (e: any) {
-      push(e?.message || 'Could not cancel.', 'error');
+      push(e?.message || t('bookings.toast_cancel_fail'), 'error');
+    } finally {
+      setBusy(false);
     }
   }
 
   if (loading) return <div className="empty">{t('common.loading')}</div>;
+  if (err) {
+    return (
+      <div className="err-box err-row">
+        <span>{t('common.load_error')}</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
@@ -60,7 +77,7 @@ export default function BookingsPage() {
                 <td><span className={`swatch ${SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span></td>
                 <td>
                   {CANCELLABLE.includes(b.status) ? (
-                    <button className="btn btn-ghost btn-sm" onClick={() => cancel(b.id)}>{t('common.cancel')}</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(b.id)}>{t('common.cancel')}</button>
                   ) : <span style={{ color: 'var(--ink-soft)' }}>—</span>}
                 </td>
               </tr>
@@ -68,6 +85,35 @@ export default function BookingsPage() {
           </tbody>
         </table>
       )}
+      {confirmId ? (
+        <ConfirmCancel busy={busy} onClose={() => setConfirmId(null)} onConfirm={() => cancel(confirmId)} />
+      ) : null}
+    </div>
+  );
+}
+
+function ConfirmCancel({ busy, onClose, onConfirm }: { busy: boolean; onClose: () => void; onConfirm: () => void }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal modal-sm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="modal-head">
+          <h3>{t('bookings.confirm_title')}</h3>
+          <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
+        </div>
+        <p className="modal-sub">{t('bookings.confirm_body')}</p>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>{t('bookings.confirm_no')}</button>
+          <button type="button" className="btn btn-danger" disabled={busy} onClick={onConfirm}>
+            {busy ? <span className="spinner" /> : t('bookings.confirm_yes')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

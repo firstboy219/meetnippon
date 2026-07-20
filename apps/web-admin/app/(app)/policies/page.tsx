@@ -1,67 +1,92 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { Policy } from '@/lib/types';
-import { Modal } from '@/components/Modal';
+import { ConfirmModal, Modal } from '@/components/Modal';
+
+const FORM_ID = 'policy-form';
 
 export default function PoliciesPage() {
+  const { t } = useI18n();
   const { push } = useToast();
   const [rows, setRows] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<Policy | 'new' | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api.get<Policy[]>('/policies').then(setRows).catch(() => {}).finally(() => setLoading(false));
+    setErr(false); setLoading(true);
+    api.get<Policy[]>('/policies').then(setRows).catch(() => setErr(true)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
   async function remove(id: string) {
-    try { await api.del(`/policies/${id}`); push('Policy deleted.', 'success'); load(); }
-    catch (e: any) { push(e?.message || 'Delete failed.', 'error'); }
+    setBusy(true);
+    try { await api.del(`/policies/${id}`); push(t('pol.deleted'), 'success'); setConfirmId(null); load(); }
+    catch (e: any) { push(e?.message || t('common.delete_failed'), 'error'); }
+    finally { setBusy(false); }
   }
 
-  if (loading) return <div className="empty">Loading…</div>;
+  if (loading) return <div className="empty">{t('common.loading')}</div>;
+  if (err) {
+    return (
+      <div className="err-box err-row">
+        <span>{t('common.load_error')}</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="page-head"><h1>Booking policies</h1><button className="btn btn-primary" onClick={() => setEditing('new')}>+ New policy</button></div>
-      <div className="info-box">Policies resolve most-specific first: <b>Tenant → Category → Room</b>. A room policy overrides the category, which overrides the tenant baseline.</div>
+      <div className="page-head"><h1>{t('pol.title')}</h1><button className="btn btn-primary" onClick={() => setEditing('new')}>{t('pol.new')}</button></div>
+      <div className="info-box">{t('pol.info')}</div>
       <div className="card">
-        <table>
-          <thead><tr><th>Scope</th><th>Applies to</th><th>Key rules</th><th></th></tr></thead>
-          <tbody>
-            {rows.map((p) => (
-              <tr key={p.id}>
-                <td><span className="badge teal">{p.scope}</span></td>
-                <td>{p.scope === 'CATEGORY' ? p.category : p.scope === 'ROOM' ? p.resourceId : 'All resources'}</td>
-                <td className="card-sub">{summarize(p.rules)}</td>
-                <td><div className="row-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}>Edit</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(p.id)}>Delete</button>
-                </div></td>
-              </tr>
-            ))}
-            {rows.length === 0 ? <tr><td colSpan={4}><div className="empty">No policies yet — the tenant defaults apply.</div></td></tr> : null}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>{t('th.scope')}</th><th>{t('th.applies_to')}</th><th>{t('th.key_rules')}</th><th></th></tr></thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.id}>
+                  <td><span className="badge teal">{t(`scope.${p.scope}`)}</span></td>
+                  <td>{p.scope === 'CATEGORY' ? p.category : p.scope === 'ROOM' ? p.resourceId : t('pol.all_resources')}</td>
+                  <td className="card-sub">{summarize(p.rules, t)}</td>
+                  <td><div className="row-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}>{t('common.edit')}</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => setConfirmId(p.id)}>{t('common.delete')}</button>
+                  </div></td>
+                </tr>
+              ))}
+              {rows.length === 0 ? <tr><td colSpan={4}><div className="empty">{t('pol.empty')}</div></td></tr> : null}
+            </tbody>
+          </table>
+        </div>
       </div>
-      {editing ? <PolicyModal row={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { push('Saved.', 'success'); setEditing(null); load(); }} /> : null}
+      {editing ? <PolicyModal row={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { push(t('common.saved'), 'success'); setEditing(null); load(); }} /> : null}
+      {confirmId ? (
+        <ConfirmModal title={t('pol.confirm_title')} body={t('pol.confirm_body')} confirmLabel={t('common.delete')}
+          busy={busy} onClose={() => setConfirmId(null)} onConfirm={() => remove(confirmId)} />
+      ) : null}
     </div>
   );
 }
 
-function summarize(rules: Record<string, any>): string {
+function summarize(rules: Record<string, any>, t: (k: string) => string): string {
   const bits: string[] = [];
-  if (rules.requiresApproval) bits.push('requires approval');
+  if (rules.requiresApproval) bits.push(t('pol.sum_approval'));
   if (rules.maxDurationMinutes) bits.push(`≤ ${rules.maxDurationMinutes}m`);
-  if (rules.bufferMinutes) bits.push(`${rules.bufferMinutes}m buffer`);
-  if (rules.maxBookingsPerUserPerDay) bits.push(`≤ ${rules.maxBookingsPerUserPerDay}/day`);
-  if (rules.checkInRequired) bits.push('check-in');
+  if (rules.bufferMinutes) bits.push(`${rules.bufferMinutes}m ${t('pol.sum_buffer')}`);
+  if (rules.maxBookingsPerUserPerDay) bits.push(`≤ ${rules.maxBookingsPerUserPerDay}${t('pol.sum_per_day')}`);
+  if (rules.checkInRequired) bits.push(t('pol.sum_check_in'));
   return bits.length ? bits.join(' · ') : '—';
 }
 
 function PolicyModal({ row, onClose, onSaved }: { row: Policy | null; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const r = row?.rules ?? {};
   const [scope, setScope] = useState<Policy['scope']>(row?.scope ?? 'TENANT');
@@ -86,33 +111,32 @@ function PolicyModal({ row, onClose, onSaved }: { row: Policy | null; onClose: (
     if (scope === 'CATEGORY') payload.category = category;
     if (scope === 'ROOM') payload.resourceId = resourceId;
     try { await api.put('/policies', payload); onSaved(); }
-    catch (e: any) { push(e?.message || 'Save failed.', 'error'); }
+    catch (e: any) { push(e?.message || t('common.save_failed'), 'error'); }
     finally { setBusy(false); }
   }
 
   return (
-    <Modal title={row ? 'Edit policy' : 'New policy'} onClose={onClose}
-      footer={<>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={busy} onClick={save as any}>{busy ? <span className="spinner" /> : 'Save'}</button>
-      </>}>
-      <form onSubmit={save}>
-        <div className="f-group"><label className="f-label">Scope</label>
+    <Modal title={row ? t('pol.edit_title') : t('pol.new_title')} onClose={onClose}
+      formId={FORM_ID} submitLabel={t('common.save')} busy={busy}>
+      <form id={FORM_ID} onSubmit={save}>
+        <div className="f-group"><label className="f-label">{t('th.scope')}</label>
           <select className="f-select" value={scope} onChange={(e) => setScope(e.target.value as any)} disabled={!!row}>
-            <option value="TENANT">Tenant (baseline)</option><option value="CATEGORY">Category</option><option value="ROOM">Room</option>
+            <option value="TENANT">{t('pol.scope_tenant')}</option>
+            <option value="CATEGORY">{t('pol.scope_category')}</option>
+            <option value="ROOM">{t('pol.scope_room')}</option>
           </select>
         </div>
-        {scope === 'CATEGORY' ? <div className="f-group"><label className="f-label">Category</label><input className="f-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="VIP Room" required /></div> : null}
-        {scope === 'ROOM' ? <div className="f-group"><label className="f-label">Resource ID</label><input className="f-input" value={resourceId} onChange={(e) => setResourceId(e.target.value)} required /></div> : null}
-        <label className="f-check"><input type="checkbox" checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} /> Requires approval</label>
-        <label className="f-check"><input type="checkbox" checked={checkInRequired} onChange={(e) => setCheckInRequired(e.target.checked)} /> Requires check-in</label>
+        {scope === 'CATEGORY' ? <div className="f-group"><label className="f-label">{t('th.category')}</label><input className="f-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('res.category_ph')} required /></div> : null}
+        {scope === 'ROOM' ? <div className="f-group"><label className="f-label">{t('pol.resource_id')}</label><input className="f-input" value={resourceId} onChange={(e) => setResourceId(e.target.value)} required /></div> : null}
+        <label className="f-check"><input type="checkbox" checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} /> {t('pol.requires_approval')}</label>
+        <label className="f-check"><input type="checkbox" checked={checkInRequired} onChange={(e) => setCheckInRequired(e.target.checked)} /> {t('pol.check_in')}</label>
         <div className="f-row2">
-          <div className="f-group"><label className="f-label">Max duration (min)</label><input className="f-input" type="number" value={maxDuration} onChange={(e) => setMaxDuration(e.target.value)} /></div>
-          <div className="f-group"><label className="f-label">Buffer (min)</label><input className="f-input" type="number" value={buffer} onChange={(e) => setBuffer(e.target.value)} /></div>
+          <div className="f-group"><label className="f-label">{t('pol.max_duration')}</label><input className="f-input" type="number" min={1} value={maxDuration} onChange={(e) => setMaxDuration(e.target.value)} /></div>
+          <div className="f-group"><label className="f-label">{t('pol.buffer')}</label><input className="f-input" type="number" min={0} value={buffer} onChange={(e) => setBuffer(e.target.value)} /></div>
         </div>
         <div className="f-row2">
-          <div className="f-group"><label className="f-label">Max advance (days)</label><input className="f-input" type="number" value={maxAdvance} onChange={(e) => setMaxAdvance(e.target.value)} /></div>
-          <div className="f-group"><label className="f-label">Max bookings/user/day</label><input className="f-input" type="number" value={perDay} onChange={(e) => setPerDay(e.target.value)} /></div>
+          <div className="f-group"><label className="f-label">{t('pol.max_advance')}</label><input className="f-input" type="number" min={0} value={maxAdvance} onChange={(e) => setMaxAdvance(e.target.value)} /></div>
+          <div className="f-group"><label className="f-label">{t('pol.per_day')}</label><input className="f-input" type="number" min={1} value={perDay} onChange={(e) => setPerDay(e.target.value)} /></div>
         </div>
       </form>
     </Modal>

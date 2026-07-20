@@ -12,9 +12,12 @@ export default function ApprovalsPage() {
   const [steps, setSteps] = useState<ApprovalStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
 
   const load = useCallback(() => {
-    api.get<ApprovalStep[]>('/approvals').then(setSteps).catch(() => {}).finally(() => setLoading(false));
+    setErr(false);
+    setLoading(true);
+    api.get<ApprovalStep[]>('/approvals').then(setSteps).catch(() => setErr(true)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -22,16 +25,24 @@ export default function ApprovalsPage() {
     setBusy(id);
     try {
       await api.post(`/approvals/${id}/decide`, { decision });
-      push(decision === 'APPROVED' ? 'Approved.' : 'Rejected.', 'success');
+      push(decision === 'APPROVED' ? t('common.approved') : t('common.rejected'), 'success');
       load();
     } catch (e: any) {
-      push(e?.message || 'Could not submit decision.', 'error');
+      push(e?.message || t('appr.toast_fail'), 'error');
     } finally {
       setBusy(null);
     }
   }
 
   if (loading) return <div className="empty">{t('common.loading')}</div>;
+  if (err) {
+    return (
+      <div className="err-box err-row">
+        <span>{t('common.load_error')}</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
+      </div>
+    );
+  }
 
   return (
     <div>

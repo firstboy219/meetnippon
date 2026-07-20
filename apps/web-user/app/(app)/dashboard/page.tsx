@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -17,8 +17,13 @@ export default function DashboardPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [err, setErr] = useState(false);
 
-  useEffect(() => { api.get<Booking[]>('/bookings').then(setBookings).catch(() => {}); }, []);
+  const load = useCallback(() => {
+    setErr(false);
+    api.get<Booking[]>('/bookings').then(setBookings).catch(() => setErr(true));
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const stats = useMemo(() => {
     const today = todayUtc();
@@ -42,10 +47,16 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {err ? (
+        <div className="err-box err-row">
+          <span>{t('common.load_error')}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
+        </div>
+      ) : null}
       <div className="hero-band">
         <div>
           <h1>{t('dash.greeting')}, {user?.fullName?.split(' ')[0]}</h1>
-          <p>{upcoming.length} upcoming booking{upcoming.length === 1 ? '' : 's'}.</p>
+          <p>{upcoming.length} {upcoming.length === 1 ? t('dash.upcoming_one') : t('dash.upcoming_many')}.</p>
         </div>
         <button className="btn hero-cta" onClick={() => router.push('/book')}>{t('dash.quickbook')}</button>
       </div>
@@ -54,13 +65,13 @@ export default function DashboardPage() {
         <div className="card stat"><div className="num">{stats.today}</div><div className="lbl">{t('dash.today')}</div></div>
         <div className="card stat"><div className="num">{stats.week}</div><div className="lbl">{t('dash.week')}</div></div>
         <div className="card stat"><div className="num">{stats.pending}</div><div className="lbl">{t('dash.pending')}</div></div>
-        <div className="card stat"><div className="num">{bookings.length}</div><div className="lbl">Total bookings</div></div>
+        <div className="card stat"><div className="num">{bookings.length}</div><div className="lbl">{t('dash.total')}</div></div>
       </div>
 
       <div className="card">
         <div className="section-head">
           <h3>{t('dash.upcoming')}</h3>
-          <span className="link" onClick={() => router.push('/bookings')}>{t('nav.bookings')}</span>
+          <button type="button" className="link" onClick={() => router.push('/bookings')}>{t('nav.bookings')}</button>
         </div>
         {upcoming.length === 0 ? (
           <div className="empty">{t('bookings.empty')}</div>
@@ -71,7 +82,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>{b.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{b.resource?.name ?? (b.type === 'ONLINE' ? 'Online meeting' : '—')}</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{b.resource?.name ?? (b.type === 'ONLINE' ? t('common.online') : '—')}</div>
             </div>
             <span className={`swatch ${STATUS_SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span>
           </div>

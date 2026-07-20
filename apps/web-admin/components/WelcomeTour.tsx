@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n';
 
 const KEY = 'mn_admin_tour_v1';
 
@@ -16,6 +17,7 @@ const STEPS = [
 
 export default function WelcomeTour() {
   const { ready, user } = useAuth();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
 
@@ -25,6 +27,13 @@ export default function WelcomeTour() {
     window.addEventListener('mn:tour', h);
     return () => window.removeEventListener('mn:tour', h);
   }, [ready, user]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   function close() { localStorage.setItem(KEY, 'done'); setOpen(false); }
   if (!open) return null;
@@ -43,9 +52,9 @@ export default function WelcomeTour() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={close}>Skip</button>
-          {i > 0 ? <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setI(i - 1)}>Back</button> : null}
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => (last ? close() : setI(i + 1))}>{last ? 'Get started' : 'Next'}</button>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={close}>{t('tour.skip')}</button>
+          {i > 0 ? <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setI(i - 1)}>{t('tour.back')}</button> : null}
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => (last ? close() : setI(i + 1))}>{last ? t('tour.start') : t('tour.next')}</button>
         </div>
       </div>
     </div>

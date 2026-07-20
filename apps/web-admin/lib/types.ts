@@ -41,3 +41,8 @@ export interface AuditRow {
 }
 
 export interface Stats { rooms: number; desks: number; users: number; pendingBookings: number; }
+
+export interface AppNotification {
+  id: string; type: string; title: string; deepLink: string | null;
+  isRead: boolean; createdAt: string;
+}

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
@@ -15,8 +15,13 @@ export default function BookPage() {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [q, setQ] = useState('');
   const [active, setActive] = useState<Resource | null>(null);
+  const [err, setErr] = useState(false);
 
-  useEffect(() => { api.get<Resource[]>('/resources').then(setResources).catch(() => {}); }, []);
+  const load = useCallback(() => {
+    setErr(false);
+    api.get<Resource[]>('/resources').then(setResources).catch(() => setErr(true));
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const shown = useMemo(() => resources.filter((r) => {
     if (filter !== 'ALL' && r.type !== filter) return false;
@@ -31,12 +36,18 @@ export default function BookPage() {
       <div className="toolbar">
         <input className="search" placeholder={t('book.search')} value={q} onChange={(e) => setQ(e.target.value)} />
         {pills.map(([f, label]) => (
-          <div key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{label}</div>
+          <button type="button" key={f} className={`filter-pill ${filter === f ? 'active' : ''}`}
+            aria-pressed={filter === f} onClick={() => setFilter(f)}>{label}</button>
         ))}
       </div>
 
-      {shown.length === 0 ? (
-        <div className="empty">No resources found.</div>
+      {err ? (
+        <div className="err-box err-row">
+          <span>{t('common.load_error')}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="empty">{t('book.none')}</div>
       ) : (
         <div className="grid grid-3">
           {shown.map((r) => {
@@ -80,6 +91,12 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
   const [end, setEnd] = useState('10:00');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   async function confirm(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -90,9 +107,9 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
         startTime: `${date}T${start}:00.000Z`,
         endTime: `${date}T${end}:00.000Z`,
       });
-      onBooked(res.status === 'PENDING' ? 'Booking submitted for approval.' : 'Booking confirmed.');
+      onBooked(res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed'));
     } catch (e: any) {
-      push(e?.message || 'Could not create booking.', 'error');
+      push(e?.message || t('book.toast_fail'), 'error');
     } finally {
       setBusy(false);
     }
@@ -103,12 +120,12 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={confirm}>
         <div className="modal-head">
           <h3>{t('modal.new_booking')}</h3>
-          <button type="button" className="close" onClick={onClose}>×</button>
+          <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
         <div className="modal-sub">{resource.name}{resource.floor?.name ? ` · ${resource.floor.name}` : ''}</div>
         <div className="f-group">
           <label className="f-label">{t('modal.title')}</label>
-          <input className="f-input" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Team sync" />
+          <input className="f-input" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={t('modal.title_ph')} />
         </div>
         <div className="f-group">
           <label className="f-label">{t('modal.date')}</label>
@@ -124,7 +141,7 @@ function BookingModal({ resource, onClose, onBooked }: { resource: Resource; onC
             <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
           </div>
         </div>
-        <div className="f-hint" style={{ marginBottom: 14 }}>Times are in workspace time (UTC).</div>
+        <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')}</div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
           <button className="btn btn-primary" disabled={busy}>{busy ? <span className="spinner" /> : t('modal.confirm')}</button>

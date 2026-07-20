@@ -24,20 +24,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [pending, setPending] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
   useEffect(() => {
     if (user) api.get<ApprovalStep[]>('/approvals').then((r) => setPending(r.length)).catch(() => {});
   }, [user, path]);
+  useEffect(() => { setMenuOpen(false); }, [path]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   if (!ready || !user) return <div className="empty">{t('common.loading')}</div>;
 
   const titleKey = TITLES.find(([p]) => path.startsWith(p))?.[1] ?? 'nav.dashboard';
   return (
     <div className="app">
-      <Sidebar pendingCount={pending} />
+      <Sidebar pendingCount={pending} mobileOpen={menuOpen} onCloseMobile={() => setMenuOpen(false)} />
+      {menuOpen ? <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} /> : null}
       <div className="main">
-        <Topbar title={t(titleKey)} />
+        <Topbar title={t(titleKey)} onMenu={() => setMenuOpen(true)} />
         <div className="content">{children}</div>
       </div>
       <WelcomeTour />
