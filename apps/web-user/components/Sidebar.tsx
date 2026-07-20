@@ -16,7 +16,11 @@ const ICONS: Record<string, React.ReactNode> = {
   '/chat': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4H12a8.5 8.5 0 0 1-4-1L3 20l1.3-3.9A8.4 8.4 0 0 1 3.5 12 8.38 8.38 0 0 1 12 3.6a8.4 8.4 0 0 1 9 7.9z" /></svg>,
 };
 
-const ITEMS = [
+/**
+ * `flag` names the tenant feature that must be on for the item to appear.
+ * Items without one are core booking features and are always shown.
+ */
+const ITEMS: { href: string; key: string; flag?: string }[] = [
   { href: '/dashboard', key: 'nav.dashboard' },
   { href: '/book', key: 'nav.book' },
   { href: '/bookings', key: 'nav.bookings' },
@@ -24,7 +28,10 @@ const ITEMS = [
   { href: '/history', key: 'nav.history' },
   { href: '/approvals', key: 'nav.approval' },
   { href: '/hub', key: 'nav.hub' },
-  { href: '/chat', key: 'nav.chat' },
+  // 'chat' is the only module with a real flag today and the only one the API
+  // refuses when off. Do not gate an item on a key that does not exist — the
+  // item would simply never appear.
+  { href: '/chat', key: 'nav.chat', flag: 'chat' },
 ];
 
 export default function Sidebar({ pendingCount, mobileOpen, onCloseMobile }: {
@@ -34,6 +41,7 @@ export default function Sidebar({ pendingCount, mobileOpen, onCloseMobile }: {
   const { t } = useI18n();
   const { branding, user } = useAuth();
   const name = branding?.displayName || branding?.tenantName || 'MeetNippon';
+  const features = user?.features ?? [];
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => { if (localStorage.getItem('mn_sidebar') === 'collapsed') setCollapsed(true); }, []);
@@ -59,7 +67,7 @@ export default function Sidebar({ pendingCount, mobileOpen, onCloseMobile }: {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 4l6 8-6 8M6 4l6 8-6 8" /></svg>
       </button>
       <nav className="side">
-        {ITEMS.map((it) => {
+        {ITEMS.filter((it) => !it.flag || features.includes(it.flag)).map((it) => {
           const active = path === it.href || path.startsWith(it.href + '/');
           return (
             <Link key={it.href} href={it.href} className={`nav-item ${active ? 'active' : ''}`}

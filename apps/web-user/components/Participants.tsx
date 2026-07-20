@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useToast } from '@/lib/toast';
 import type { DirectoryUser, Participant } from '@/lib/types';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,12 +13,15 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * their in-app inbox; a bare email cannot be notified until SMTP exists, which
  * is why the two are kept distinguishable rather than collapsed to strings.
  */
-export default function Participants({ value, onChange, selfEmail }: {
+export default function Participants({ value, onChange, selfEmail, allowExternal = true }: {
   value: Participant[];
   onChange: (next: Participant[]) => void;
   selfEmail?: string;
+  /** From the resource's resolved policy; the API refuses these when false. */
+  allowExternal?: boolean;
 }) {
   const { t } = useI18n();
+  const { push } = useToast();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState<DirectoryUser[]>([]);
   const [open, setOpen] = useState(false);
@@ -48,7 +52,10 @@ export default function Participants({ value, onChange, selfEmail }: {
   }, [dir, q, chosen, selfEmail]);
 
   const typedIsEmail = EMAIL.test(q.trim());
-  const canAddTyped = typedIsEmail && !chosen.has(q.trim().toLowerCase());
+  // A typed address is by definition someone outside the directory, so when the
+  // policy forbids external guests there is nothing to offer.
+  const canAddTyped = allowExternal && typedIsEmail && !chosen.has(q.trim().toLowerCase());
+  const blockedExternal = !allowExternal && typedIsEmail;
 
   function add(p: Participant) {
     onChange([...value, p]);
@@ -65,6 +72,7 @@ export default function Participants({ value, onChange, selfEmail }: {
       e.preventDefault();
       if (matches.length) add({ userId: matches[0].id, email: matches[0].email, name: matches[0].fullName });
       else if (canAddTyped) add({ email: q.trim(), external: true });
+      else if (blockedExternal) push(t('part.no_external'), 'error');
     } else if (e.key === 'Escape' && open) {
       e.stopPropagation();
       setOpen(false);
@@ -89,7 +97,7 @@ export default function Participants({ value, onChange, selfEmail }: {
         <input className="f-input" value={q} placeholder={t('part.placeholder')}
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)} onKeyDown={onKeyDown} />
-        {open && (matches.length > 0 || canAddTyped) ? (
+        {open && (matches.length > 0 || canAddTyped || blockedExternal) ? (
           <div className="picker-menu">
             {matches.map((u) => (
               <button type="button" key={u.id} className="picker-item"
@@ -103,6 +111,11 @@ export default function Participants({ value, onChange, selfEmail }: {
                 <span className="picker-name">{t('part.invite_ext')} “{q.trim()}”</span>
                 <span className="picker-sub">{t('part.external_hint')}</span>
               </button>
+            ) : null}
+            {blockedExternal ? (
+              <div className="picker-item picker-blocked">
+                <span className="picker-sub">{t('part.no_external')}</span>
+              </div>
             ) : null}
           </div>
         ) : null}

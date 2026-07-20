@@ -9,6 +9,25 @@
  * dependency is added.
  */
 
+/**
+ * Human-readable range on the tenant's wall clock, e.g.
+ * "Mon, 27 Jul 2026, 09:00–10:00 (WIB)". Used in outbound email, where the
+ * reader has no client-side formatting to fall back on.
+ */
+export function formatRange(start: Date, end: Date, tz: string): string {
+  const safe = isValidTimeZone(tz) ? tz : 'UTC';
+  const day = new Intl.DateTimeFormat('en-GB', {
+    timeZone: safe, weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  }).format(start);
+  const hhmm = (d: Date) =>
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: safe, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(d);
+  const zone = new Intl.DateTimeFormat('id-ID', { timeZone: safe, timeZoneName: 'short' })
+    .formatToParts(start).find((p) => p.type === 'timeZoneName')?.value ?? safe;
+  return `${day}, ${hhmm(start)}–${hhmm(end)} (${zone})`;
+}
+
 const PARTS_FMT_CACHE = new Map<string, Intl.DateTimeFormat>();
 
 function partsFormatter(tz: string): Intl.DateTimeFormat {

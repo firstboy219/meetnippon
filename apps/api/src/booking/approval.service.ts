@@ -4,15 +4,22 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getTenantStore } from '../tenant/tenant-context';
+import { MailService } from '../mail/mail.service';
+import { NotificationService } from '../notification/notification.service';
+import { formatRange } from '../common/tz.util';
 
 @Injectable()
 export class ApprovalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
+    private readonly notifications: NotificationService,
+    private readonly config: ConfigService,
   ) {}
 
   private caller() {
@@ -93,6 +100,64 @@ export class ApprovalService {
       metadata: { stepId, level: step.level },
     });
 
+    // Tell the requester once the outcome is final; a booking still waiting on
+    // a later level has nothing to report yet.
+    if (bookingStatus !== 'PENDING') {
+      await this.announceDecision(step.bookingId, bookingStatus, note);
+    }
+
     return { stepId, decision, bookingStatus };
+  }
+
+  private async announceDecision(
+    bookingId: string,
+    status: 'APPROVED' | 'REJECTED',
+    note?: string,
+  ) {
+    const booking = await this.prisma.scoped.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        resource: { select: { name: true } },
+        principal: { select: { email: true, fullName: true } },
+      },
+    });
+    if (!booking?.principal?.email) return;
+
+    const tenantId = getTenantStore()?.tenantId as string;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, timezone: true },
+    });
+    const when = formatRange(booking.startTime, booking.endTime, tenant?.timezone || 'UTC');
+    const approved = status === 'APPROVED';
+
+    await this.notifications.notify(tenantId, booking.principalId, {
+      type: 'approval',
+      title: approved
+        ? `"${booking.title}" was approved`
+        : `"${booking.title}" was rejected`,
+      deepLink: '/bookings',
+    });
+
+    this.mail.send({
+      to: booking.principal.email,
+      subject: `${approved ? 'Approved' : 'Rejected'}: ${booking.title}`,
+      text: [
+        `Hi ${booking.principal.fullName},`,
+        '',
+        approved
+          ? 'Your booking request has been approved.'
+          : 'Your booking request was not approved.',
+        '',
+        `What:  ${booking.title}`,
+        `When:  ${when}`,
+        `Where: ${booking.resource?.name ?? 'Online'}`,
+        ...(note ? ['', `Note from the approver: ${note}`] : []),
+      ].join('\n'),
+      action: {
+        label: 'View my bookings',
+        url: `${this.config.get<string>('APP_BASE_URL') || 'https://meetnippon.cosger.online'}/bookings`,
+      },
+    });
   }
 }

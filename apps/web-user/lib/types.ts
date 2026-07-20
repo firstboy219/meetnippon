@@ -22,6 +22,25 @@ export interface AuthUser {
   tenantId: string;
   /** Tenant wall clock, served by /auth/me. */
   timezone?: string;
+  /** Feature-flag keys the admin console has switched on for this tenant. */
+  features?: string[];
+}
+
+export interface BusinessHours { start: string; end: string; days: number[] }
+
+/** Effective booking rules for a resource, resolved TENANT←CATEGORY←ROOM. */
+export interface PublicPolicy {
+  requiresApproval: boolean;
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
+  minAdvanceMinutes: number;
+  maxAdvanceDays: number;
+  bufferMinutes: number;
+  businessHours: BusinessHours;
+  maxBookingsPerUserPerDay: number;
+  allowExternalParticipants: boolean;
+  allowRecurring: boolean;
+  checkInRequired: boolean;
 }
 
 export interface Resource {
@@ -34,6 +53,7 @@ export interface Resource {
   zone: string | null;
   status: string;
   floor?: { name: string; building?: { name: string } | null } | null;
+  policy?: PublicPolicy;
 }
 
 export interface DirectoryUser {
@@ -48,8 +68,12 @@ export interface Participant {
   external?: boolean;
 }
 
-/** How many invitees the API could actually reach in-app. */
-export interface InviteResult { notified: number; unreachable: number }
+/**
+ * `notified` — in-app notifications actually written.
+ * `emailQueued` — messages handed to the mail server. Delivery is asynchronous,
+ * so this is not proof of arrival; the admin console has the real status.
+ */
+export interface InviteResult { notified: number; emailQueued: number }
 
 export interface Booking {
   id: string;

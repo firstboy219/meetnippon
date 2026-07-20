@@ -8,6 +8,8 @@ import { AuditService } from '../audit/audit.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { hashPassword } from '../auth/password.util';
 import { PlanService } from '../billing/plan.service';
+import { MailService } from '../mail/mail.service';
+import { ConfigService } from '@nestjs/config';
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -26,6 +28,8 @@ export class UserAdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly plan: PlanService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
 
   list() {
@@ -55,6 +59,28 @@ export class UserAdminService {
       select: SAFE_SELECT,
     });
     await this.audit.log({ action: 'user.create', entity: 'User', entityId: user.id, metadata: { role: user.role } });
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: getTenantStore()?.tenantId as string },
+      select: { name: true },
+    });
+    const base = this.config.get<string>('APP_BASE_URL') || 'https://meetnippon.cosger.online';
+    this.mail.send({
+      to: email,
+      subject: `Your ${tenant?.name ?? 'MeetNippon'} account is ready`,
+      text: [
+        `Hi ${dto.fullName},`,
+        '',
+        `An account has been created for you on ${tenant?.name ?? 'MeetNippon'}.`,
+        '',
+        `Email:    ${email}`,
+        // Only ever mail a password the platform generated. One the admin chose
+        // is theirs to hand over — it may be in use somewhere else.
+        ...(dto.password ? [] : [`Password: ${tempPassword}`, '', 'Please change it after your first sign-in.']),
+      ].join('\n'),
+      action: { label: 'Sign in', url: `${base}/login` },
+    });
+
     // Return the temp password only when the admin didn't set one (for handoff).
     return dto.password ? user : { ...user, tempPassword };
   }

@@ -9,6 +9,7 @@ import {
 } from '../common/domain.util';
 import { RegisterWorkspaceDto } from './dto/register.dto';
 import { isValidTimeZone } from '../common/tz.util';
+import { MailService } from '../mail/mail.service';
 
 /**
  * Self-service onboarding (Phase 10). Creates a brand-new tenant with its first
@@ -20,6 +21,7 @@ export class OnboardingService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   async register(dto: RegisterWorkspaceDto) {
@@ -75,10 +77,29 @@ export class OnboardingService {
     });
 
     const base = this.config.get<string>('PLATFORM_BASE_DOMAIN');
+    const loginUrl = `https://${base}/login`;
+
+    this.mail.send({
+      to: email,
+      subject: `Your ${dto.orgName} workspace is ready`,
+      text: [
+        `Hi ${dto.adminFullName},`,
+        '',
+        `The workspace "${dto.orgName}" has been created and you are its administrator.`,
+        '',
+        `Workspace: ${slug}`,
+        `Email:     ${email}`,
+        // The password is the one they just chose — never repeat it back.
+        '',
+        'Sign in with the password you chose during registration, then invite your team from Users in the admin console.',
+      ].join('\n'),
+      action: { label: 'Sign in', url: loginUrl },
+    });
+
     return {
       tenantSlug: slug,
       adminEmail: email,
-      loginUrl: `https://${base}/login`,
+      loginUrl,
       workspace: slug,
     };
   }

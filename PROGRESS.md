@@ -35,6 +35,85 @@
 | LOC-1 | Admin Locations & floor plans (Denah) + geofence UI | ✅ DONE (2026-07-20) |
 | UP-1 | Image upload (floor plans), verify gate, stray-data cleanup | ✅ DONE (2026-07-20) |
 | UX-1 | Booking flow: participants + invite confirmation, edit, post-book redirect | ✅ DONE (2026-07-20) |
+| SYNC-1 | Admin settings actually reach the user portal | ✅ DONE (2026-07-20) |
+| MAIL-1 | Outbound email service | ⚠️ BUILT & DEPLOYED — **blocked on a valid SMTP credential** |
+
+---
+
+## SYNC-1 — Admin ↔ user portal sync — DONE (2026-07-20)
+
+Owner asked whether admin settings actually take effect for users. Two did not.
+
+**The approval bug.** The booking page decided whether a room needed approval with
+`(r.category ?? '').toLowerCase().includes('vip')` — a string match on the category *name*.
+The policy engine was never consulted, so switching approval off in the admin console changed
+nothing a user saw. `GET /resources` now returns the **resolved** policy
+(TENANT←CATEGORY←ROOM) per resource and the portal reads `policy.requiresApproval`.
+`approverIds` and `autoReleaseMinutes` are stripped — who signs off is internal routing.
+Resolution is batched (`resolveMany`) so a listing is one query, not one per row.
+
+**Proved live, both directions:** with approval ON the portal shows *requires approval* and a
+new booking lands `PENDING`; admin switches the VIP category off → the portal immediately shows
+*available* and the next booking lands `APPROVED`; switched back on → `PENDING` again.
+
+**Feature flags.** Flags were admin-only; the portal showed every module regardless. `/auth/me`
+now carries the enabled keys and the sidebar hides what is off. Only `chat` has a real flag today
+(and the API already refuses it when disabled) — **do not gate an item on a key that does not
+exist**, or it simply never appears.
+
+**Also now honoured, verified:** resource status (MAINTENANCE/INACTIVE rooms are filtered out of
+`/resources`), branding colours + logo (CSS custom properties from `/tenant/branding`), tenant
+timezone (TZ-1), deactivated users (excluded from the directory), plan limits (enforced on create).
+
+**Schema flaw found.** `BookingPolicy` has `@@unique([tenantId, scope, category, resourceId])`,
+but for a TENANT-scope row both `category` and `resourceId` are NULL — and Postgres treats NULLs
+as *distinct* in a unique index, so the constraint does not stop duplicates. That is how `nipsea`
+ended up with two TENANT policies. The resolver now orders by `id` so resolution is at least
+deterministic, but **the real fix is a partial unique index**, and the duplicate rows should be
+merged. Not done here: it is a migration plus prod data surgery.
+
+## MAIL-1 — Outbound email — BUILT, BLOCKED ON CREDENTIAL (2026-07-20)
+
+**110/110 tests pass.** Everything is written, deployed and wired. It cannot deliver because the
+SMTP credential it was told to reuse is rejected by Gmail.
+
+**Service** — `MailService` on nodemailer, configured entirely from env. Delivery is
+**best-effort and never blocks the caller**: a booking must not fail because a mail server is slow.
+With no `SMTP_HOST` it disables itself and logs what it *would* have sent, so tests need no mail
+server and an unconfigured production is obvious rather than silently broken.
+HTML bodies escape every interpolated value (a meeting title is user input).
+
+**Wired to** — booking created (all participants), booking rescheduled, approval approved/rejected
+(requester, with the approver's note), new user created by an admin (credentials; a password the
+*admin* chose is never mailed, only a generated one), workspace registration (never echoes the
+password the user just chose).
+
+**Env plumbing gotcha** — `validateEnv` returns a *whitelist* object and that return value **is**
+the config. Any key not listed there reads back `undefined` no matter what is in the environment,
+so `SMTP_*` and `APP_BASE_URL` had to be added explicitly.
+
+**Honesty fix** — the API first reported `emailed: N`, which was a lie: sends are fire-and-forget,
+so N counted messages *handed to the transport*, not delivered. Renamed to `emailQueued`, and
+`GET /admin/mail/status` now performs a real `verify()` so an admin can find out whether email
+actually works. `POST /admin/mail/test` sends to the calling admin.
+
+**🔴 BLOCKER — the credential is dead.** Reused from `/home/ubuntu/apps/autotoko/.env`
+(`smtp.gmail.com:587`, `muhilhamps@gmail.com`). It copied across intact — 16 chars, unquoted, no
+spaces, correct shape for a Gmail App Password — but Gmail rejects it:
+`535-5.7.8 Username and Password not accepted`. Confirmed with a **raw SMTP login test outside the
+application**, so this is the credential, not the code. It has presumably been revoked or expired
+(autotoko is not currently running, so nothing else was exercising it).
+`/api/admin/mail/status` reports exactly this. **Needs a fresh Gmail App Password**; swapping
+`SMTP_PASS` in `/opt/meetnippon/.env` and restarting the API is the whole fix.
+
+**Note on the From address** — Gmail rewrites `From` to the authenticated mailbox, so
+`no-reply@meetnippon.cosger.online` would be silently replaced. Configured as
+`MeetNippon <muhilhamps@gmail.com>`. A proper sender identity needs either a Google Workspace
+alias or a real transactional provider — worth deciding before pilot.
+
+**Deploy gotcha repeated** — an `scp` failed with `Connection closed`, the build then ran against
+a **stale tarball**, and the whole gate reported OK while `mail.controller.js` was simply absent
+from the image (the route 404'd). Uploads are now hash-checked before building.
 
 ---
 

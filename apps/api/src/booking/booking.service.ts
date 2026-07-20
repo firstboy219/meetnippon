@@ -11,6 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { NotificationService } from '../notification/notification.service';
+import { MailService } from '../mail/mail.service';
+import { ConfigService } from '@nestjs/config';
+import { formatRange } from '../common/tz.util';
 import { getTenantStore } from '../tenant/tenant-context';
 import { PolicyResolverService } from './policy/policy-resolver.service';
 import { DEFAULT_RULES, PolicyRules } from './policy/policy.types';
@@ -36,6 +39,8 @@ export class BookingService {
     private readonly resolver: PolicyResolverService,
     private readonly calendar: CalendarService,
     private readonly notifications: NotificationService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
 
   private caller() {
@@ -57,26 +62,26 @@ export class BookingService {
    * deliberately reports how many it could not reach rather than pretending.
    */
   private async notifyParticipants(
-    booking: { id: string; title: string },
+    booking: { id: string; title: string; startTime: Date; endTime: Date; resourceId?: string | null },
     participants: { userId?: string; email: string }[],
     kind: 'invited' | 'moved',
-  ): Promise<{ notified: number; unreachable: number }> {
+  ): Promise<{ notified: number; emailQueued: number }> {
     const tenantId = getTenantStore()?.tenantId;
     const callerId = this.caller().userId;
     if (!tenantId || participants.length === 0) {
-      return { notified: 0, unreachable: 0 };
+      return { notified: 0, emailQueued: 0 };
     }
 
     const emails = participants.map((p) => p.email).filter(Boolean);
     const ids = participants.map((p) => p.userId).filter(Boolean) as string[];
     const users = await this.prisma.scoped.user.findMany({
       where: { OR: [{ id: { in: ids } }, { email: { in: emails } }], isActive: true },
-      select: { id: true },
+      select: { id: true, email: true },
     });
 
-    const targets = users.map((u) => u.id).filter((id) => id !== callerId);
-    for (const userId of targets) {
-      await this.notifications.notify(tenantId, userId, {
+    const targets = users.filter((u) => u.id !== callerId);
+    for (const u of targets) {
+      await this.notifications.notify(tenantId, u.id, {
         type: 'calendar',
         title:
           kind === 'invited'
@@ -85,10 +90,53 @@ export class BookingService {
         deepLink: '/calendar',
       });
     }
+
+    // Email reaches everyone on the list, including guests outside the
+    // workspace who have no in-app inbox. The organiser is left out — they
+    // just performed the action.
+    const organiser = users.find((u) => u.id === callerId)?.email;
+    const recipients = [...new Set(emails)].filter((e) => e !== organiser);
+    if (recipients.length) {
+      const [tenant, resource] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true } }),
+        booking.resourceId
+          ? this.prisma.scoped.resource.findUnique({
+            where: { id: booking.resourceId }, select: { name: true },
+          })
+          : Promise.resolve(null),
+      ]);
+      const tz = tenant?.timezone || 'UTC';
+      const when = formatRange(booking.startTime, booking.endTime, tz);
+      const where = resource?.name ?? 'Online';
+      this.mail.send({
+        to: recipients,
+        subject: kind === 'invited'
+          ? `Invitation: ${booking.title}`
+          : `Rescheduled: ${booking.title}`,
+        text: [
+          kind === 'invited'
+            ? `You have been invited to a meeting at ${tenant?.name ?? 'MeetNippon'}.`
+            : `A meeting you are attending at ${tenant?.name ?? 'MeetNippon'} has been moved.`,
+          '',
+          `What:  ${booking.title}`,
+          `When:  ${when}`,
+          `Where: ${where}`,
+        ].join('\n'),
+        action: { label: 'Open calendar', url: `${this.appBaseUrl()}/calendar` },
+      });
+    }
+
+    // Queued, not delivered: sending is fire-and-forget so a booking is never
+    // held up by a mail server. Delivery success lives in the logs and in the
+    // admin mail-status probe — do not let the UI claim more than this.
     return {
       notified: targets.length,
-      unreachable: Math.max(0, participants.length - users.length),
+      emailQueued: this.mail.isEnabled() ? recipients.length : 0,
     };
+  }
+
+  private appBaseUrl(): string {
+    return this.config.get<string>('APP_BASE_URL') || 'https://meetnippon.cosger.online';
   }
 
   /** Any active booking whose (buffered) window overlaps the given slot. */
@@ -259,7 +307,7 @@ export class BookingService {
     }
 
     const invites = dto.notify === false
-      ? { notified: 0, unreachable: 0 }
+      ? { notified: 0, emailQueued: 0 }
       : await this.notifyParticipants(
         created[0],
         (dto.participants ?? []) as { userId?: string; email: string }[],
@@ -419,7 +467,7 @@ export class BookingService {
     }[];
     const invites = (movingTime || movingRoom) && dto.notify !== false
       ? await this.notifyParticipants(updated, audience, 'moved')
-      : { notified: 0, unreachable: 0 };
+      : { notified: 0, emailQueued: 0 };
 
     return { ...updated, invites };
   }

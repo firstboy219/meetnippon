@@ -17,6 +17,8 @@ import { ApprovalService } from '../src/booking/approval.service';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { CalendarService } from '../src/calendar/calendar.service';
 import { NotificationService } from '../src/notification/notification.service';
+import { ConfigService } from '@nestjs/config';
+import { TestMailService } from './helpers/test-mail';
 import { runWithTenant } from '../src/tenant/tenant-context';
 
 const A = 'bk-tA';
@@ -31,8 +33,10 @@ const audit = new AuditService(prisma);
 const flags = new FeatureFlagService(prisma, audit);
 const calendar = new CalendarService(prisma, flags);
 const notifications = new NotificationService(prisma, flags);
-const booking = new BookingService(prisma, audit, resolver, calendar, notifications);
-const approvals = new ApprovalService(prisma, audit);
+const mail = new TestMailService();
+const config = new ConfigService({ APP_BASE_URL: 'https://test.local' });
+const booking = new BookingService(prisma, audit, resolver, calendar, notifications, mail, config);
+const approvals = new ApprovalService(prisma, audit, mail, notifications, config);
 
 // two days out, avoids min-advance and past-time issues
 const D = new Date(Date.now() + 2 * 86400000);
@@ -240,8 +244,9 @@ describe('booking core', () => {
     expect(steps.every((s) => s.decision === 'PENDING')).toBe(true);
   });
 
-  it('notifies colleagues it can reach, and counts the ones it cannot', async () => {
+  it('notifies colleagues in-app and emails everyone on the list', async () => {
     await prisma.notification.deleteMany({ where: { tenantId: A } });
+    mail.reset();
     const b: any = await asEmp(() =>
       booking.create({
         title: 'Standup',
@@ -255,7 +260,12 @@ describe('booking core', () => {
         ],
       }),
     );
-    expect(b.invites).toEqual({ notified: 1, unreachable: 1 });
+    // one colleague reached in-app; both non-organiser addresses get email
+    expect(b.invites).toEqual({ notified: 1, emailQueued: 2 });
+    expect(mail.recipients().sort()).toEqual(['appr@a.co', 'outsider@vendor.com']);
+    expect(mail.sent[0].subject).toContain('Standup');
+    // the organiser is not mailed about their own booking
+    expect(mail.recipients()).not.toContain('emp@a.co');
 
     const notes = await prisma.notification.findMany({ where: { tenantId: A } });
     expect(notes).toHaveLength(1);
@@ -264,15 +274,49 @@ describe('booking core', () => {
 
     // rescheduling tells them again
     await prisma.notification.deleteMany({ where: { tenantId: A } });
+    mail.reset();
     const moved: any = await asEmp(() =>
       booking.update(b.id, { startTime: iso(at(4, 30)), endTime: iso(at(5, 30)) }),
     );
     expect(moved.invites.notified).toBe(1);
     const after = await prisma.notification.findMany({ where: { tenantId: A } });
     expect(after[0].title).toContain('rescheduled');
+    expect(mail.sent[0].subject).toContain('Rescheduled');
+    // the new time, on the tenant clock, must appear in the body
+    expect(mail.sent[0].text).toMatch(/When:/);
   });
 
-  it('does not notify when only the title changes', async () => {
+  it('sends nothing at all when notify is false', async () => {
+    mail.reset();
+    await prisma.notification.deleteMany({ where: { tenantId: A } });
+    await asEmp(() =>
+      booking.create({
+        title: 'Silent', resourceId: 'roomA1',
+        startTime: iso(at(23, 10)), endTime: iso(at(23, 40)),
+        notify: false,
+        participants: [{ email: 'appr@a.co' }, { email: 'outsider@vendor.com', external: true }],
+      }),
+    );
+    expect(mail.sent).toHaveLength(0);
+    expect(await prisma.notification.count({ where: { tenantId: A } })).toBe(0);
+  });
+
+  it('emails the requester when an approval is decided', async () => {
+    const b: any = await asEmp(() =>
+      booking.create({ title: 'Decide me', resourceId: 'roomA2', startTime: iso(at(15)), endTime: iso(at(16)) }),
+    );
+    expect(b.status).toBe('PENDING');
+    mail.reset();
+    const step = await prisma.approvalStep.findFirst({ where: { bookingId: b.id, decision: 'PENDING' } });
+    await asApprover(() => approvals.decide(step!.id, 'REJECTED', 'Room is reserved for the board'));
+
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0].to).toBe('emp@a.co');
+    expect(mail.sent[0].subject).toContain('Rejected');
+    expect(mail.sent[0].text).toContain('Room is reserved for the board');
+  });
+
+  it('does not notify or email when only the title changes', async () => {
     const b: any = await asEmp(() =>
       booking.create({
         title: 'Quiet', resourceId: 'roomA1',
@@ -281,8 +325,10 @@ describe('booking core', () => {
       }),
     );
     await prisma.notification.deleteMany({ where: { tenantId: A } });
+    mail.reset();
     await asEmp(() => booking.update(b.id, { title: 'Quiet v2' }));
     expect(await prisma.notification.count({ where: { tenantId: A } })).toBe(0);
+    expect(mail.sent).toHaveLength(0);
   });
 
   it('does not leak bookings across tenants', async () => {

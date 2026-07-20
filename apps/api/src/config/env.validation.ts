@@ -20,6 +20,17 @@ export interface AppEnv {
   JWT_REFRESH_TTL: number;
   PLATFORM_BASE_DOMAIN: string;
   PUBLIC_EMAIL_DOMAINS: string[];
+  // Mail is optional: with no SMTP_HOST the MailService disables itself and
+  // logs what it would have sent. These must be listed here because this
+  // function's return value *is* the config — anything omitted reads back
+  // undefined no matter what is in the environment.
+  SMTP_HOST: string;
+  SMTP_PORT: string;
+  SMTP_USER: string;
+  SMTP_PASS: string;
+  SMTP_FROM: string;
+  /** Absolute base for links in emails, e.g. https://meetnippon.cosger.online */
+  APP_BASE_URL: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -47,5 +58,13 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+    SMTP_HOST: String(raw.SMTP_HOST ?? ''),
+    SMTP_PORT: String(raw.SMTP_PORT ?? '587'),
+    SMTP_USER: String(raw.SMTP_USER ?? ''),
+    SMTP_PASS: String(raw.SMTP_PASS ?? ''),
+    SMTP_FROM: String(raw.SMTP_FROM ?? ''),
+    APP_BASE_URL: String(
+      raw.APP_BASE_URL ?? `https://${String(raw.PLATFORM_BASE_DOMAIN ?? 'localhost')}`,
+    ),
   };
 }

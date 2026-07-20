@@ -13,6 +13,8 @@ import { BrandingService } from '../src/admin/branding.service';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { PlanService } from '../src/billing/plan.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
+import { ConfigService } from '@nestjs/config';
+import { TestMailService } from './helpers/test-mail';
 
 const A = 'adm-tA';
 const B = 'adm-tB';
@@ -24,7 +26,8 @@ const flags = new FeatureFlagService(prisma, audit);
 const plan = new PlanService(prisma, flags);
 const loc = new LocationService(prisma, audit);
 const resAdmin = new ResourceAdminService(prisma, audit, plan);
-const users = new UserAdminService(prisma, audit, plan);
+const mail = new TestMailService();
+const users = new UserAdminService(prisma, audit, plan, mail, new ConfigService({}));
 const branding = new BrandingService(prisma, audit);
 
 const asAdmin = <T>(fn: () => Promise<T>) =>

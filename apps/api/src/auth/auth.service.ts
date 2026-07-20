@@ -178,12 +178,24 @@ export class AuthService {
           tenantId: true,
           // The portal renders every time on this clock; branding is not a
           // reliable carrier for it (shared-URL hosts resolve no tenant).
-          tenant: { select: { timezone: true } },
+          tenant: {
+            select: {
+              timezone: true,
+              // What the admin console has switched on. The portal used to show
+              // every module regardless, so turning one off changed nothing for
+              // the people using it.
+              featureFlags: { where: { enabled: true }, select: { key: true } },
+            },
+          },
         },
       }),
     );
     if (!user) throw new UnauthorizedException();
     const { tenant, ...rest } = user;
-    return { ...rest, timezone: tenant?.timezone ?? 'UTC' };
+    return {
+      ...rest,
+      timezone: tenant?.timezone ?? 'UTC',
+      features: (tenant?.featureFlags ?? []).map((f) => f.key),
+    };
   }
 }

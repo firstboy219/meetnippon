@@ -56,7 +56,9 @@ export default function BookPage() {
         <div className="grid grid-3">
           {shown.map((r) => {
             const loc = [r.floor?.building?.name, r.floor?.name].filter(Boolean).join(', ');
-            const needsApproval = (r.category ?? '').toLowerCase().includes('vip');
+            // Straight from the policy engine. Guessing this from the category
+            // name meant switching approval off in admin changed nothing here.
+            const needsApproval = r.policy?.requiresApproval ?? false;
             return (
               <div key={r.id} className="card room-card">
                 <div className="room-thumb">{r.name}</div>
@@ -141,7 +143,7 @@ function BookingModal({ resource, onClose, onBooked }: {
         ...(participants.length ? { participants, notify } : {}),
       });
       const base = res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed');
-      const n = res.invites?.notified ?? 0;
+      const n = participants.length && notify ? participants.length : 0;
       onBooked(n > 0 ? `${base} ${t('book.toast_notified').replace('{n}', String(n))}` : base, date);
     } catch (e: any) {
       push(e?.message || t('book.toast_fail'), 'error');
@@ -151,6 +153,13 @@ function BookingModal({ resource, onClose, onBooked }: {
     }
   }
 
+  const policy = resource.policy;
+  // A 00:00–23:59 window is the "no restriction" default; showing it would be
+  // noise rather than guidance.
+  const hours =
+    policy?.businessHours && !(policy.businessHours.start === '00:00' && policy.businessHours.end === '23:59')
+      ? policy.businessHours
+      : null;
   const internal = participants.filter((p) => !p.external);
   const external = participants.filter((p) => p.external);
 
@@ -181,8 +190,8 @@ function BookingModal({ resource, onClose, onBooked }: {
           {notify && internal.length > 0 ? (
             <div className="info-box">{t('invite.inapp').replace('{n}', String(internal.length))}</div>
           ) : null}
-          {notify && external.length > 0 ? (
-            <div className="warn-box">{t('invite.email_pending').replace('{n}', String(external.length))}</div>
+          {notify && participants.length > 0 ? (
+            <div className="info-box">{t('invite.email').replace('{n}', String(participants.length))}</div>
           ) : null}
 
           <div className="modal-footer">
@@ -222,9 +231,13 @@ function BookingModal({ resource, onClose, onBooked }: {
             <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
           </div>
         </div>
-        <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')} ({tzLabel(getTenantTz())})</div>
+        <div className="f-hint" style={{ marginBottom: 14 }}>
+          {t('modal.tz_hint')} ({tzLabel(getTenantTz())})
+          {hours ? ` · ${t('modal.hours_hint')} ${hours.start}–${hours.end}` : ''}
+        </div>
 
-        <Participants value={participants} onChange={setParticipants} selfEmail={user?.email} />
+        <Participants value={participants} onChange={setParticipants} selfEmail={user?.email}
+          allowExternal={policy?.allowExternalParticipants ?? true} />
 
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>

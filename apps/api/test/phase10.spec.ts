@@ -9,13 +9,15 @@ import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { PlanService } from '../src/billing/plan.service';
 import { OnboardingService } from '../src/onboarding/onboarding.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
+import { TestMailService } from './helpers/test-mail';
 
 const prisma = new PrismaService();
 const audit = new AuditService(prisma);
 const flags = new FeatureFlagService(prisma, audit);
 const plan = new PlanService(prisma, flags);
 const config = new ConfigService({ PUBLIC_EMAIL_DOMAINS: ['gmail.com'], PLATFORM_BASE_DOMAIN: 'meetnippon.test' });
-const onboarding = new OnboardingService(prisma, config, audit);
+const mail = new TestMailService();
+const onboarding = new OnboardingService(prisma, config, audit, mail);
 
 const SLUG = 'acme10';
 const BILL = 'bill10-tenant';
