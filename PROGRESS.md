@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE + UI hardening pass (UI-1) DONE.
+## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE, plus UI-1 (hardening), TZ-1 (per-tenant timezone), CAL-1 (Kalender & Riwayat).
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
@@ -31,6 +31,31 @@
 | 10 | Billing & self-service onboarding | ✅ DONE — onboarding real; billing plans/limits real, payment mock (2026-07-19) |
 | UI-1 | QA UI audit + hardening pass (both portals) | ✅ DONE (2026-07-20) |
 | TZ-1 | Per-tenant timezone (retires the UTC wall-clock model) | ✅ DONE (2026-07-20) |
+| CAL-1 | Calendar (Kalender) + History (Riwayat) views, booking list filters | ✅ DONE (2026-07-20) |
+
+---
+
+## CAL-1 — Kalender & Riwayat — DONE (2026-07-20)
+
+Two views the user portal was missing, plus the API filtering they needed. **77/77 tests still pass.**
+
+**API — `GET /bookings` gained filters** (`dto/list-bookings-query.dto.ts`). All optional, so the endpoint's old no-arg behaviour is unchanged:
+- `scope=upcoming|past|all` — the boundary is **`endTime`, not `startTime`**, so a meeting running right now still counts as upcoming rather than dropping into history mid-session.
+- `from` / `to` (ISO instants, `to` exclusive), `status`, `take` (1–200) / `skip`.
+- Sort follows intent: `upcoming` reads ascending (soonest first), everything else descending (newest first), which is how a history list is actually scanned.
+- `ValidationPipe` already runs `whitelist + forbidNonWhitelisted + transform`, so bad input 400s rather than being ignored — verified live for `scope=bogus`, `take=999`, and an unknown param.
+
+**Pagination shape** — the response stays a plain **array**. Callers request `take = PAGE + 1` and use the surplus row as the "there is more" signal, so no total has to cross the wire and no existing consumer sees a changed contract.
+
+**Web — `/calendar`** — Monday-first month grid on the tenant wall clock. Prev/next/today, day-detail panel, zone badge. Grid arithmetic is pure calendar math (`Date.UTC` on `YYYY-MM-DD` keys) and deliberately **zone-free** — which days a month has is the same everywhere; the zone only decides which day is *today* (`todayLocal`) and which day a booking lands on (`localDateKey`). The fetch window is the grid's own span converted through `zonedToUtcIso`, so a booking near local midnight is fetched for the day it displays on. Cancelled/rejected are hidden from the grid but still visible in History. Below 820px the chips collapse to a dot-per-booking bar and the day panel carries the detail.
+
+**Web — `/history`** — past bookings with status + date-range filters and load-more paging (20/page). The end date reads as inclusive to the user but is sent as the following local midnight, since the API bound is exclusive.
+
+**`/bookings` is now scoped `upcoming`** — it was fetching every booking a user had ever made, unbounded, and rendering finished rows with a dead Cancel column. It now shows only what is still ahead (every row actionable) and links across to History.
+
+**`lib/format.ts`** gained `fmtMonthYear`, `fmtDayLong`, `weekdayLabels` — all locale-aware (`en-GB`/`id-ID`) and rendered with `timeZone: 'UTC'` because their input is already a calendar key, not an instant; re-projecting would risk shifting a day.
+
+**Gotcha recorded** — there is **no `node_modules` on the server**; all builds run through `docker build` (`--target build` for the API's TS gate and jest, `--target prod` for images). A `npx tsc` / `npx next build` over SSH silently downloads *different major versions* from the registry (pulled next@16 against a next@14 repo) and reports nothing useful — an early attempt here "passed" without compiling a single file. The API test suite needs `--network meetnippon_internal` + `DATABASE_URL`; without it 7 of 10 suites fail on Prisma connect. Those tests are safe against the live DB — `wipe()` is scoped to the `test-tenant-A`/`test-tenant-B` fixtures (confirmed: `Booking` count 9 before and after, 0 test tenants left behind).
 
 ---
 
@@ -83,7 +108,7 @@ Commit `3e7f830`. QA agent audited all 37 page/component files in both portals a
 
 **Design tokens:** audit found 100% parity with mockups (teal `#0E6E55`, coral `#E4572E`, Space Grotesk/Inter) — no drift, no changes needed.
 
-**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan), **Kalender**, **Riwayat**; plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: office locations/geofence + floor-plan upload (~25% of the Denah & Ruangan view), dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search. Also still open: pagination everywhere (audit/bookings/users grow unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone was the third item here — done, see TZ-1 below.)*
+**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: office locations/geofence + floor-plan upload (~25% of the Denah & Ruangan view), dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search. Also still open: pagination for **admin** audit/users lists (still unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1.)*
 
 ---
 

@@ -13,6 +13,8 @@ const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'],
   ['/book', 'nav.book'],
   ['/bookings', 'nav.bookings'],
+  ['/calendar', 'nav.calendar'],
+  ['/history', 'nav.history'],
   ['/approvals', 'nav.approval'],
   ['/hub', 'nav.hub'],
   ['/chat', 'nav.chat'],

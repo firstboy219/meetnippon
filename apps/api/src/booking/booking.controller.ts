@@ -12,6 +12,7 @@ import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { CancelBookingDto, CheckInDto } from './dto/cancel-booking.dto';
+import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -24,8 +25,8 @@ export class BookingController {
   }
 
   @Get()
-  listMine() {
-    return this.bookings.listMine();
+  listMine(@Query() q: ListBookingsQueryDto) {
+    return this.bookings.listMine(q);
   }
 
   // NOTE: declared before ':id' so the literal path wins the route match.

@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
@@ -24,7 +25,10 @@ export default function BookingsPage() {
   const load = useCallback(() => {
     setErr(false);
     setLoading(true);
-    api.get<Booking[]>('/bookings').then(setBookings).catch(() => setErr(true)).finally(() => setLoading(false));
+    // Only what is still ahead — everything finished lives in Riwayat/History,
+    // which keeps this list bounded and every row actionable.
+    api.get<Booking[]>('/bookings?scope=upcoming')
+      .then(setBookings).catch(() => setErr(true)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -54,7 +58,10 @@ export default function BookingsPage() {
 
   return (
     <div className="card">
-      <div className="section-head"><h3>{t('bookings.title')}</h3></div>
+      <div className="section-head">
+        <h3>{t('bookings.title')}</h3>
+        <Link href="/history" className="link">{t('bookings.see_history')}</Link>
+      </div>
       {bookings.length === 0 ? (
         <div className="empty">{t('bookings.empty')}</div>
       ) : (

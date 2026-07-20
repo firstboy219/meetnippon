@@ -80,6 +80,34 @@ export function zonedToUtcIso(dateStr: string, timeStr: string, tz: string = get
   return new Date(utcMs).toISOString();
 }
 
+const LOCALES: Record<string, string> = { en: 'en-GB', id: 'id-ID' };
+const localeOf = (lang: string) => LOCALES[lang] ?? 'en-GB';
+
+/** "July 2026" / "Juli 2026", from a 'YYYY-MM' or 'YYYY-MM-DD' key. */
+export function fmtMonthYear(monthKey: string, lang: string): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  // Rendered in UTC because the key is already a calendar date, not an instant —
+  // re-projecting it through a zone would risk shifting it a day.
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(localeOf(lang), {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+/** "Mon, 20 Jul" / "Sen, 20 Jul", from a 'YYYY-MM-DD' key. */
+export function fmtDayLong(dayKey: string, lang: string): string {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(localeOf(lang), {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  });
+}
+
+/** Weekday headings for a Monday-first grid, in the active language. */
+export function weekdayLabels(lang: string): string[] {
+  const fmt = new Intl.DateTimeFormat(localeOf(lang), { weekday: 'short', timeZone: 'UTC' });
+  // 2024-01-01 was a Monday; seven days from it covers the week in order.
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(Date.UTC(2024, 0, 1 + i))));
+}
+
 /**
  * Short display name for a zone, e.g. "WIB" or "GMT+9".
  * Formatted with id-ID because it is the only locale that names the Indonesian

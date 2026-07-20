@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { nanoid } from 'nanoid';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CalendarService } from '../calendar/calendar.service';
@@ -19,6 +20,7 @@ import {
 } from './booking.rules';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { addLocalDays, startOfDayInTz } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
@@ -210,11 +212,33 @@ export class BookingService {
     return dto.recurrence ? { groupId, count: created.length, bookings: created } : created[0];
   }
 
-  listMine() {
+  listMine(q: ListBookingsQueryDto = {}) {
     const { userId } = this.caller();
+    const now = new Date();
+
+    const where: Prisma.BookingWhereInput = {
+      OR: [{ principalId: userId }, { bookerId: userId }],
+    };
+    if (q.status) where.status = q.status as any;
+    // The window is measured against endTime so a meeting in progress is still
+    // "upcoming" — it has not happened yet from the attendee's point of view.
+    if (q.scope === 'upcoming') where.endTime = { gte: now };
+    else if (q.scope === 'past') where.endTime = { lt: now };
+
+    if (q.from || q.to) {
+      where.startTime = {
+        ...(q.from ? { gte: new Date(q.from) } : {}),
+        ...(q.to ? { lt: new Date(q.to) } : {}),
+      };
+    }
+
     return this.prisma.scoped.booking.findMany({
-      where: { OR: [{ principalId: userId }, { bookerId: userId }] },
-      orderBy: { startTime: 'desc' },
+      where,
+      // Upcoming reads forwards (soonest first); everything else reads backwards
+      // from the most recent, which is how a history list is scanned.
+      orderBy: { startTime: q.scope === 'upcoming' ? 'asc' : 'desc' },
+      ...(q.take !== undefined ? { take: q.take } : {}),
+      ...(q.skip ? { skip: q.skip } : {}),
       include: { approvalSteps: true, resource: { select: { name: true, type: true } } },
     });
   }
