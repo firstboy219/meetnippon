@@ -7,7 +7,8 @@ import { Sidebar, Topbar } from '@/components/Shell';
 import WelcomeTour from '@/components/WelcomeTour';
 
 const TITLES: [string, string][] = [
-  ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'], ['/users', 'nav.users'],
+  ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'],
+  ['/locations', 'nav.locations'], ['/users', 'nav.users'],
   ['/policies', 'nav.policies'], ['/branding', 'nav.branding'], ['/integrations', 'nav.integrations'],
   ['/billing', 'nav.billing'], ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
 ];

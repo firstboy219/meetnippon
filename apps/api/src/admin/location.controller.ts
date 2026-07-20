@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { LocationService } from './location.service';
 import {
-  UpsertOfficeLocationDto, UpsertBuildingDto, UpsertFloorDto,
+  UpsertOfficeLocationDto, UpsertBuildingDto, UpsertFloorDto, UpsertFloorPlanDto,
 } from './dto/location.dto';
 
 @Controller('admin')
@@ -28,4 +28,9 @@ export class LocationController {
   @Post('floors') createFloor(@Body() d: UpsertFloorDto) { return this.svc.createFloor(d); }
   @Put('floors/:id') updateFloor(@Param('id') id: string, @Body() d: UpsertFloorDto) { return this.svc.updateFloor(id, d); }
   @Delete('floors/:id') removeFloor(@Param('id') id: string) { return this.svc.removeFloor(id); }
+
+  @Get('floors/:id/plan') floorPlan(@Param('id') id: string) { return this.svc.getFloorPlan(id); }
+  @Put('floors/:id/plan') saveFloorPlan(@Param('id') id: string, @Body() d: UpsertFloorPlanDto) {
+    return this.svc.saveFloorPlan(id, d);
+  }
 }

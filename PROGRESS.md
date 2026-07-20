@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE, plus UI-1 (hardening), TZ-1 (per-tenant timezone), CAL-1 (Kalender & Riwayat).
+## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE, plus UI-1 (hardening), TZ-1 (per-tenant timezone), CAL-1 (Kalender & Riwayat), LOC-1 (Lokasi & Denah admin).
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
@@ -32,6 +32,38 @@
 | UI-1 | QA UI audit + hardening pass (both portals) | ✅ DONE (2026-07-20) |
 | TZ-1 | Per-tenant timezone (retires the UTC wall-clock model) | ✅ DONE (2026-07-20) |
 | CAL-1 | Calendar (Kalender) + History (Riwayat) views, booking list filters | ✅ DONE (2026-07-20) |
+| LOC-1 | Admin Locations & floor plans (Denah) + geofence UI | ✅ DONE (2026-07-20) |
+
+---
+
+## LOC-1 — Lokasi & Denah (admin) — DONE (2026-07-20)
+
+The geofence engine and Office→Building→Floor CRUD already existed and were tested; what was missing was **any UI to reach them** and the floor-plan half of the model. **81/81 tests pass** (4 new).
+
+**API**
+- `GET|PUT /admin/floors/:id/plan` — the `FloorPlan` model (`imageUrl` + `pins`) had no endpoints at all. GET returns the plan *plus the resources on that floor*, so the editor needs one request.
+- **Pins are fractions of the image (0..1), not pixels** — swapping in a plan at a different resolution leaves every pin where the admin put it.
+- A pin may only reference a resource **actually on that floor**; a stale or hand-crafted payload otherwise plants another floor's desk (or another tenant's id) onto the plan. Duplicate pins for one resource are rejected too.
+- `listFloors` now includes building name, plan presence and a resource count, so the table renders without a request per row.
+- Office DTO tightened: `lat`/`lng` bounded to real ranges and `geofenceRadiusM` to 10..100000. An out-of-range office silently never matches any geofence, which presents as broken WFH detection rather than as bad data. `isActive` is now settable.
+
+**Admin UI — `/locations`** — tabbed Offices / Buildings / Floors.
+- Offices carry the geofence: coordinates, radius, active flag, a "use my current location" helper, and a privacy note stating what the platform stores. Coordinates are **all-or-nothing** (half a pair can never match), and an office without them is badged *No coordinates* rather than looking configured.
+- Floors open a **plan editor**: paste the image URL, then click a resource's *Place* button and click the plan. Esc cancels placement without closing the dialog. Unplaced resources are listed with their positions, and a broken image URL says so instead of rendering an invisible canvas.
+- Delete confirmations spell out the actual cascade (deleting a building takes its floors and plans; resources survive but lose their floor).
+
+**Resources page gained the floor picker it never had** — resources could not be assigned to a floor from the UI at all, which meant no resource could ever appear on a plan.
+
+**No file upload** — plan images and logos are URL strings, matching how branding already works. Adding upload means introducing object storage, which is a larger decision than this change; the hint text says so plainly.
+
+**Verification** — live: plan GET/PUT round-trips; all four rejection paths return 400 (pin off-floor, x outside 0..1, duplicate pin, lat 999, radius 1); unauthenticated 401 and an EMPLOYEE token 403; geofence still classifies (office coordinates → `OFFICE`, 1000km away → `WFH`); `/locations`, `/resources`, `/dashboard`, `/calendar` all 200; n8n + postgres untouched; `nginx -t` clean. Probe plan data was reverted to empty afterwards.
+
+**Gotchas recorded**
+- Prisma `upsert.create` cannot satisfy `FloorPlanUncheckedCreateInput` from a literal, because `tenantId` is stamped by the scoping extension at run time — cast, as the rest of the admin services already do.
+- **A build guard must not accept an existing image tag as proof of success.** An earlier run here checked `docker image inspect meetnippon-api:build` after a *failed* build; the stale image from the previous build satisfied it, the run reported a pass, and the test suite then exercised old code. Tag each build uniquely, or check the build's exit status.
+- Running jest with `-t 'floor plan'` fails in isolation: those tests reuse fixtures created by earlier tests in `admin.spec.ts` (the file's existing style). The full-suite run is the real signal.
+
+**Left alone deliberately** — two `HQ Smoke` offices from a 2026-07-19 smoke test remain in the pilot tenant. Both have NULL coordinates, so `classifyLocation` skips them and they cannot affect WFH detection; they are cosmetic only. Not deleted, because permanent prod data removal is an owner decision.
 
 ---
 
@@ -108,7 +140,7 @@ Commit `3e7f830`. QA agent audited all 37 page/component files in both portals a
 
 **Design tokens:** audit found 100% parity with mockups (teal `#0E6E55`, coral `#E4572E`, Space Grotesk/Inter) — no drift, no changes needed.
 
-**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: office locations/geofence + floor-plan upload (~25% of the Denah & Ruangan view), dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search. Also still open: pagination for **admin** audit/users lists (still unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1.)*
+**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search, and **floor-plan image upload** (URLs work today; upload needs object storage). Also still open: pagination for **admin** audit/users lists (still unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1. Admin office locations/geofence + floor plans — done, see LOC-1; the user-facing Denah view that consumes those plans is still open.)*
 
 ---
 

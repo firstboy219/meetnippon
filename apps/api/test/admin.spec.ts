@@ -3,7 +3,7 @@
  * Covers location/resource/user/branding management, key guards, and that
  * admin listings never cross tenants.
  */
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { LocationService } from '../src/admin/location.service';
@@ -73,6 +73,64 @@ describe('admin location + resource CRUD', () => {
       const updated = await resAdmin.update(r.id, { status: 'MAINTENANCE' });
       expect(updated.status).toBe('MAINTENANCE');
     });
+  });
+});
+
+describe('floor plans', () => {
+  it('saves pins and reads them back with the floor\'s resources', async () => {
+    await asAdmin(async () => {
+      const floors = await loc.listFloors();
+      const floor = floors[0];
+      const room = (await resAdmin.listAll()).find((r) => r.floorId === floor.id)!;
+
+      const saved = await loc.saveFloorPlan(floor.id, {
+        imageUrl: 'https://cdn.example.com/l1.png',
+        pins: [{ resourceId: room.id, x: 0.25, y: 0.8 }],
+      });
+      expect(saved.imageUrl).toBe('https://cdn.example.com/l1.png');
+      expect(saved.pins).toEqual([{ resourceId: room.id, x: 0.25, y: 0.8 }]);
+      expect(saved.resources.map((r) => r.id)).toContain(room.id);
+
+      // upsert path: a second save must update, not duplicate
+      const again = await loc.saveFloorPlan(floor.id, { pins: [] });
+      expect(again.pins).toEqual([]);
+      expect(again.imageUrl).toBe('https://cdn.example.com/l1.png'); // untouched
+    });
+  });
+
+  it('refuses a pin for a resource that is not on this floor', async () => {
+    await asAdmin(async () => {
+      const floors = await loc.listFloors();
+      const other = await loc.createFloor({ name: 'L2', buildingId: floors[0].buildingId });
+      const room = (await resAdmin.listAll()).find((r) => r.floorId === floors[0].id)!;
+      await expect(
+        loc.saveFloorPlan(other.id, { pins: [{ resourceId: room.id, x: 0.5, y: 0.5 }] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  it('refuses the same resource pinned twice', async () => {
+    await asAdmin(async () => {
+      const floor = (await loc.listFloors())[0];
+      const room = (await resAdmin.listAll()).find((r) => r.floorId === floor.id)!;
+      await expect(
+        loc.saveFloorPlan(floor.id, {
+          pins: [
+            { resourceId: room.id, x: 0.1, y: 0.1 },
+            { resourceId: room.id, x: 0.9, y: 0.9 },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  it('does not expose one tenant\'s floor plan to another', async () => {
+    const floorA = await asAdmin(async () => (await loc.listFloors())[0]);
+    // Tenant B asking for tenant A's floor must not find it at all.
+    await expect(asAdminB(() => loc.getFloorPlan(floorA.id))).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      asAdminB(() => loc.saveFloorPlan(floorA.id, { imageUrl: 'https://evil.example/x.png' })),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

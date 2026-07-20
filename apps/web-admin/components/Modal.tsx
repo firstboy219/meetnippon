@@ -6,9 +6,9 @@ import { useI18n } from '@/lib/i18n';
  * When `formId` is supplied the footer renders a real submit button bound to the
  * page's <form id={formId}>, so native `required` validation runs before save.
  */
-export function Modal({ title, sub, onClose, children, footer, small, formId, submitLabel, busy }: {
+export function Modal({ title, sub, onClose, children, footer, small, wide, formId, submitLabel, busy }: {
   title: string; sub?: string; onClose: () => void;
-  children: React.ReactNode; footer?: React.ReactNode; small?: boolean;
+  children: React.ReactNode; footer?: React.ReactNode; small?: boolean; wide?: boolean;
   formId?: string; submitLabel?: string; busy?: boolean;
 }) {
   const { t } = useI18n();
@@ -20,7 +20,8 @@ export function Modal({ title, sub, onClose, children, footer, small, formId, su
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className={`modal ${small ? 'modal-sm' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div className={`modal ${small ? 'modal-sm' : ''} ${wide ? 'modal-wide' : ''}`}
+        onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h3>{title}</h3>
           <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>

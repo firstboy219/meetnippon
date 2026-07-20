@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import {
   UpsertOfficeLocationDto,
   UpsertBuildingDto,
   UpsertFloorDto,
+  UpsertFloorPlanDto,
+  FloorPlanPinDto,
 } from './dto/location.dto';
 
 /** Admin CRUD for the location hierarchy (BRD 7.2): Office → Building → Floor. */
@@ -73,7 +75,16 @@ export class LocationService {
 
   // ---- Floors ----
   listFloors() {
-    return this.prisma.scoped.floor.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.scoped.floor.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        building: { select: { id: true, name: true } },
+        // Lets the UI show which floors are mapped and how full they are
+        // without a request per row.
+        floorPlan: { select: { imageUrl: true } },
+        _count: { select: { resources: true } },
+      },
+    });
   }
 
   async createFloor(dto: UpsertFloorDto) {
@@ -99,6 +110,66 @@ export class LocationService {
     await this.prisma.scoped.floor.delete({ where: { id } });
     await this.audit.log({ action: 'floor.delete', entity: 'Floor', entityId: id });
     return { deleted: true };
+  }
+
+  // ---- Floor plans (BRD 7.2 Denah) ----
+  /** The plan for a floor, plus the resources that may be pinned onto it. */
+  async getFloorPlan(floorId: string) {
+    await this.mustExist('floor', floorId);
+    const [plan, resources] = await Promise.all([
+      this.prisma.scoped.floorPlan.findUnique({ where: { floorId } }),
+      this.prisma.scoped.resource.findMany({
+        where: { floorId },
+        select: { id: true, name: true, type: true, status: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+    return {
+      floorId,
+      imageUrl: plan?.imageUrl ?? null,
+      pins: (plan?.pins as unknown as FloorPlanPinDto[]) ?? [],
+      resources,
+    };
+  }
+
+  async saveFloorPlan(floorId: string, dto: UpsertFloorPlanDto) {
+    await this.mustExist('floor', floorId);
+    const pins = dto.pins ?? [];
+
+    // A pin may only point at a resource that is actually on this floor.
+    // Without this a stale or hand-crafted payload could plant another floor's
+    // desk — or another tenant's id — onto the plan.
+    if (pins.length) {
+      const ids = [...new Set(pins.map((p) => p.resourceId))];
+      const onFloor = await this.prisma.scoped.resource.findMany({
+        where: { id: { in: ids }, floorId },
+        select: { id: true },
+      });
+      const valid = new Set(onFloor.map((r) => r.id));
+      const stray = ids.filter((id) => !valid.has(id));
+      if (stray.length) {
+        throw new BadRequestException(
+          `Not on this floor: ${stray.join(', ')}`,
+        );
+      }
+      if (ids.length !== pins.length) {
+        throw new BadRequestException('A resource can only be pinned once.');
+      }
+    }
+
+    const data = {
+      ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl } : {}),
+      ...(dto.pins !== undefined ? { pins: pins as any } : {}),
+    };
+    const plan = await this.prisma.scoped.floorPlan.upsert({
+      where: { floorId },
+      // tenantId is stamped by the scoping extension at run time, so the
+      // literal cannot satisfy FloorPlanUncheckedCreateInput on its own.
+      create: { floorId, imageUrl: dto.imageUrl ?? null, pins: pins as any } as any,
+      update: data,
+    });
+    await this.audit.log({ action: 'floorplan.update', entity: 'FloorPlan', entityId: plan.id });
+    return this.getFloorPlan(floorId);
   }
 
   private async mustExist(model: 'officeLocation' | 'building' | 'floor', id: string) {

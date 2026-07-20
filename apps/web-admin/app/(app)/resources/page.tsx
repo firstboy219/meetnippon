@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
-import type { AdminResource } from '@/lib/types';
+import type { AdminFloor, AdminResource } from '@/lib/types';
 import { ConfirmModal, Modal } from '@/components/Modal';
 
 const STATUS_BADGE: Record<string, string> = { ACTIVE: 'green', MAINTENANCE: 'amber', INACTIVE: 'grey' };
@@ -87,13 +87,20 @@ function ResourceModal({ row, onClose, onSaved }: { row: AdminResource | null; o
   const [capacity, setCapacity] = useState(String(row?.capacity ?? 1));
   const [facilities, setFacilities] = useState((row?.facilities ?? []).join(', '));
   const [status, setStatus] = useState(row?.status ?? 'ACTIVE');
+  const [floorId, setFloorId] = useState(row?.floorId ?? '');
+  const [floors, setFloors] = useState<AdminFloor[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // Without a floor a resource can never appear on a plan, so the picker is
+  // loaded here rather than making admins go hunting for it.
+  useEffect(() => { api.get<AdminFloor[]>('/admin/floors').then(setFloors).catch(() => {}); }, []);
 
   async function save(e: React.FormEvent) {
     e.preventDefault(); setBusy(true);
     const payload = {
       type, name, category: category || undefined, capacity: Number(capacity),
       facilities: facilities.split(',').map((s) => s.trim()).filter(Boolean),
+      floorId: floorId || undefined,
     };
     try {
       if (row) await api.put(`/admin/resources/${row.id}`, { ...payload, status });
@@ -122,6 +129,14 @@ function ResourceModal({ row, onClose, onSaved }: { row: AdminResource | null; o
         </div>
         <div className="f-group"><label className="f-label">{t('th.category')}</label>
           <input className="f-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('res.category_ph')} />
+        </div>
+        <div className="f-group"><label className="f-label">{t('th.floor')}</label>
+          <select className="f-select" value={floorId} onChange={(e) => setFloorId(e.target.value)}>
+            <option value="">{t('res.no_floor')}</option>
+            {floors.map((f) => (
+              <option key={f.id} value={f.id}>{f.building?.name ? `${f.building.name} · ${f.name}` : f.name}</option>
+            ))}
+          </select>
         </div>
         <div className="f-group"><label className="f-label">{t('res.facilities')}</label>
           <input className="f-input" value={facilities} onChange={(e) => setFacilities(e.target.value)} placeholder={t('res.facilities_ph')} />
