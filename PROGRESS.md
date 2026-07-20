@@ -8,7 +8,7 @@
 
 ---
 
-## Active phase: Phases 8–9 (Android/iOS native) — separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE.
+## Active phase: Phases 8–9 (Android/iOS native) — **pended by owner**; separate mobile track, needs mobile toolchain (not this server). All WEB phases (0–7, 10) DONE + UI hardening pass (UI-1) DONE.
 
 **🟢 LIVE IN PRODUCTION:** https://meetnippon.cosger.online (user portal) + https://admin.meetnippon.cosger.online (admin portal) — API + chat WS, Let's Encrypt TLS on both.
 
@@ -29,12 +29,61 @@
 | 8 | Android native | ⬜ separate mobile track |
 | 9 | iOS native | ⬜ separate mobile track |
 | 10 | Billing & self-service onboarding | ✅ DONE — onboarding real; billing plans/limits real, payment mock (2026-07-19) |
-| 5 | Identity & calendar integrations | ⬜ |
-| 6 | Advanced modules (chat, approval hub, WFH, recording, WA) | ⬜ |
-| 7 | Analytics, migration, hardening, prod deploy | ⬜ |
-| 8 | Android native | ⬜ |
-| 9 | iOS native | ⬜ |
-| 10 | Billing & self-service onboarding | ⬜ |
+| UI-1 | QA UI audit + hardening pass (both portals) | ✅ DONE (2026-07-20) |
+| TZ-1 | Per-tenant timezone (retires the UTC wall-clock model) | ✅ DONE (2026-07-20) |
+
+---
+
+## TZ-1 — Per-tenant timezone — DONE (2026-07-20)
+
+Commit `9ae2aa8`. Retires the Phase-2 "everything is UTC wall-clock" shortcut, which made the dashboard's *Bookings today* stat roll over at 07:00 local for WIB users and evaluated business hours against the wrong clock. **77/77 tests pass** (16 new).
+
+**Schema** — `Tenant.timezone` (IANA string), migration `20260720073612_tenant_timezone`. Additive; **default `UTC`** so every existing tenant and all 61 pre-existing tests keep their old behaviour. New workspaces are created `Asia/Jakarta` by onboarding (`RegisterWorkspaceDto.timezone` optional override); pilot tenant `nipsea` set to `Asia/Jakarta`.
+
+**API**
+- `src/common/tz.util.ts` — Intl-based (full ICU ships with Node 13+, no tzdata dep): `zonedParts`, `tzOffsetMs`, `isoWeekdayInTz`, `minuteOfDayInTz`, `localDateKey`, `startOfDayInTz`, `addLocalDays`, `isValidTimeZone`. `startOfDayInTz`/`addLocalDays` use a two-pass offset correction so DST transitions resolve.
+- `src/common/tenant-tz.ts` — `tenantTimezone(prisma)`, resolves via tenant context, `'UTC'` outside it.
+- `booking.rules.ts` — `withinBusinessHours` / `validateSlot` / `isoWeekday` / `generateOccurrences` take a `tz` (defaulting to `'UTC'`, so the pure-function tests are untouched). Recurrence now steps by **calendar days on the local clock**, so an occurrence keeps its local start time across a DST shift instead of drifting an hour.
+- `booking.service.ts` — resolves tenant tz once per create; per-user daily quota boundaries via `startOfDayInTz`/`addLocalDays` (was UTC midnight).
+- `work-location.service.ts` (WFH `day` key) and `admin/analytics.service.ts` (WFH-today) — same fix; these were the other two UTC-midnight boundaries.
+- `auth.service.ts` — **`/auth/me` now returns `timezone`.** This is the authoritative carrier: `GET /tenant/branding` resolves no tenant on shared-URL hosts (returns `{tenant:null}`), so branding alone would have left the pilot portal silently rendering UTC.
+- `admin/branding` GET returns `{...branding, timezone}`; PUT accepts `timezone`, validated server-side against Intl.
+
+**Web (both portals)** — `lib/format.ts` gained `setTenantTz`/`getTenantTz`, tz-aware `fmtDate`/`fmtTime`/`fmtDateTime`, `localDateKey`, `todayLocal`, `tzLabel`; user portal also has `zonedToUtcIso`. `todayUtc` and `sameUtcDay` are gone (all call sites updated). Both `auth.tsx` set the clock from `/auth/me` on load **and** after login (without the latter a fresh session renders UTC until the next full page load). Booking modal submits `zonedToUtcIso(date, time, tz)` instead of the old `${date}T${time}:00.000Z`, defaults the date to tenant-local today, and labels the hint with the real zone. Dashboard *today* compares local date keys. Admin Branding page has a timezone picker (14-zone shortlist, preserves an out-of-shortlist saved value so Save can't silently rewrite the workspace clock). `tzLabel` formats with `id-ID` — the only locale that names the Indonesian zones (WIB/WITA/WIT); elsewhere it degrades to GMT offsets, same as en-GB would.
+
+**Demo seed** — `seed-demo.ts` now builds instants from **WIB wall-clock** (helpers mirror the API's), so demo bookings read as a real office day (08:30 / 09:00 / 09:30 / 10:00 / 14:00 WIB) instead of appearing 7h shifted. WFH `day` keys likewise use Jakarta local midnight. Tenant upsert pins `timezone`.
+
+**Verification** — `zonedToUtcIso` and friends were executed under real Node against expected values (10/10), including both 2026 US DST edges (`01:30`→06:30Z and `03:30`→07:30Z on spring-forward, `01:30`→05:30Z on fall-back) and the midnight-crossing case (`00:30 WIB` → previous-day `17:30Z`). Live after deploy: `/auth/me` returns `Asia/Jakarta`; the second tenant still reads `UTC`; both portals + API 200; resources/bookings/notifications/flags intact; n8n + postgres untouched; `nginx -t` clean.
+
+**Gotcha recorded** — Prisma schema rejects `/** */` block comments (5 validation errors); use `///`. Also: `Booking.startTime` is `timestamp without time zone`, so a verification query must read `(col at time zone 'UTC') at time zone 'Asia/Jakarta'` — a bare `at time zone 'Asia/Jakarta'` reinterprets rather than converts and shows nonsense.
+
+---
+
+## UI-1 — QA audit & hardening pass — DONE (2026-07-20)
+
+Commit `3e7f830`. QA agent audited all 37 page/component files in both portals against the two mockups; findings fixed in a two-agent sweep (one per portal) + owner review. Both portals rebuilt and redeployed; builds passed clean (Next.js build = the typecheck gate, since no Node locally).
+
+**P1 fixed (UX non-negotiables + blockers)**
+- **ESC-close** on every modal/overlay: user BookingModal, cancel-confirm, both WelcomeTours, admin shared `Modal` + `ConfirmModal`. (Click-outside already worked.)
+- **Collapsible sidebar** both portals — icon rail, persisted (`mn_sidebar` / `mn_admin_sidebar`).
+- **Destructive-action confirmations**: cancel booking (user); delete resource, delete policy, deactivate user, change role (admin). Role change no longer fires on every `<select>` change, and **self-demotion is blocked** (compares row id vs `useAuth().user.id`).
+- **Mobile navigation**: user portal previously hid the sidebar ≤820px with no alternative; admin had no breakpoint at all. Both now have a hamburger + drawer with backdrop (ESC/click-outside/route-change close); all admin tables wrapped in `.table-wrap` (`overflow-x:auto`).
+- **Real error states**: every `catch(() => {})` on a data fetch replaced with an error box + Retry. Admin `analytics` and `billing` previously hung on "Loading…" forever on failure — fixed with an error branch before the null check.
+
+**P2 fixed**
+- **Notification bell + center** in both topbars (unread badge, 30s poll, mark-all-read, deep-link, ESC/click-outside). Routes: `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/:id/read`, `POST /notifications/read-all`.
+- **i18n backfill** — user portal ~50% → ~100% (hub, chat, signup, 7-step tour, all toasts; fixed ID entries that were English copies). Admin **20 → 221 keys** (+201), all 10 pages + Shell wired; every static key verified to resolve, no duplicates.
+- **Modal validation bypass** (admin): footer sat outside `<form>` and pages used `onClick={save as any}`, skipping HTML `required`. Modal now takes `formId` and renders a real `<button type="submit" form=…>`; resources/users/policies rewired.
+- Admin bookings: approval decisions rendered as bare initials ("A P R") → proper bilingual colored chips.
+- Chat: draft restored on send failure; IME composition guard on Enter (was breaking JP/ID input).
+- WelcomeTour: overlay click no longer marks the tour permanently done — only Skip / Get started do.
+- a11y: div/span `onClick` → real `<button>` (filter pills, dashboard links, chat rows); `aria-label` on icon-only buttons; toast `role="status" aria-live="polite"` + click-to-dismiss.
+
+**Verified live after deploy:** user/admin `/login` + `/api/health` all HTTP 200; 11 resources, 6 bookings, 3 hub tasks, 5 notifications (5 unread), 13 chat convos, 6/6 flags on, 7 users, approvals visible to dina. Co-hosted apps (n8n, postgres) untouched and up; `nginx -t` clean.
+
+**Design tokens:** audit found 100% parity with mockups (teal `#0E6E55`, coral `#E4572E`, Space Grotesk/Inter) — no drift, no changes needed.
+
+**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan), **Kalender**, **Riwayat**; plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: office locations/geofence + floor-plan upload (~25% of the Denah & Ruangan view), dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search. Also still open: pagination everywhere (audit/bookings/users grow unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone was the third item here — done, see TZ-1 below.)*
 
 ---
 
