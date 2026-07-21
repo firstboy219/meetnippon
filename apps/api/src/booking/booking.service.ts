@@ -109,6 +109,7 @@ export class BookingService {
       const when = formatRange(booking.startTime, booking.endTime, tz);
       const where = resource?.name ?? 'Online';
       this.mail.send({
+        tenantId,
         to: recipients,
         subject: kind === 'invited'
           ? `Invitation: ${booking.title}`

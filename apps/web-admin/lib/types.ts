@@ -50,6 +50,31 @@ export interface FloorPlan {
   resources: { id: string; name: string; type: 'ROOM' | 'DESK'; status: string }[];
 }
 
+/** Mail settings as the console sees them — the password itself never appears. */
+export interface MailSettings {
+  host: string;
+  port: number;
+  username: string;
+  fromName: string | null;
+  fromEmail: string | null;
+  enabled: boolean;
+  hasPassword: boolean;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+}
+
+export interface MailSettingsResponse {
+  settings: MailSettings | null;
+  platformFallbackAvailable: boolean;
+}
+
+export interface MailStatus {
+  configured: boolean;
+  ok: boolean;
+  detail: string;
+  using: string;
+}
+
 export interface Policy {
   id: string; scope: 'TENANT' | 'CATEGORY' | 'ROOM';
   category: string | null; resourceId: string | null; rules: Record<string, any>;

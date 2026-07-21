@@ -11,6 +11,11 @@ export interface MailInput {
   /** Optional call-to-action rendered as a button in the HTML part. */
   action?: { label: string; url: string };
   replyTo?: string;
+  /**
+   * Which tenant's SMTP settings to use. Omitted falls back to the platform
+   * env defaults, which is what unscoped/system mail wants.
+   */
+  tenantId?: string;
 }
 
 /**
@@ -31,8 +36,28 @@ export class MailService implements OnModuleInit {
   private transporter: Transporter | null = null;
   private from = 'MeetNippon <no-reply@localhost>';
   private enabled = false;
+  private readonly tenantTransports = new Map<
+    string,
+    { transporter: Transporter; from: string; label: string }
+  >();
+
+  /**
+   * Injected lazily to avoid a circular dependency: MailSettingsService needs
+   * Prisma and Audit, both of which sit above the global MailModule.
+   */
+  private settings: {
+    resolveFor: (tenantId: string) => Promise<{
+      host: string; port: number; username: string; password: string; from: string;
+    } | null>;
+    recordVerification: (tenantId: string, ok: boolean, detail: string) => Promise<void>;
+  } | null = null;
 
   constructor(private readonly config: ConfigService) {}
+
+  /** Wired once at startup by MailModule. */
+  useSettingsProvider(provider: NonNullable<MailService['settings']>): void {
+    this.settings = provider;
+  }
 
   onModuleInit() {
     const host = this.config.get<string>('SMTP_HOST');
@@ -46,17 +71,9 @@ export class MailService implements OnModuleInit {
     }
 
     this.from = this.config.get<string>('SMTP_FROM') || this.from;
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      // 465 is implicit TLS; 587 upgrades via STARTTLS.
-      secure: port === 465,
-      ...(user && pass ? { auth: { user, pass } } : {}),
-      // A stuck connection must not pin a request thread for minutes.
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000,
-    });
+    // 465 is implicit TLS; 587 upgrades via STARTTLS. A stuck connection must
+    // not pin a request thread for minutes.
+    this.transporter = this.build(host, port, user ?? '', pass ?? '');
     this.enabled = true;
     this.logger.log(`Email enabled via ${host}:${port} as ${this.from}`);
   }
@@ -74,25 +91,80 @@ export class MailService implements OnModuleInit {
     const to = Array.isArray(input.to) ? input.to.filter(Boolean) : [input.to];
     if (to.length === 0) return false;
 
-    if (!this.enabled || !this.transporter) {
+    const t = await this.transportFor(input.tenantId);
+    if (!t) {
       this.logger.log(`[mail:disabled] would send "${input.subject}" to ${to.join(', ')}`);
       return false;
     }
     try {
-      await this.transporter.sendMail({
-        from: this.from,
+      await t.transporter.sendMail({
+        from: t.from,
         to: to.join(', '),
         subject: input.subject,
         text: this.plain(input),
         html: this.html(input),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       });
-      this.logger.log(`[mail:sent] "${input.subject}" -> ${to.length} recipient(s)`);
+      this.logger.log(`[mail:sent] "${input.subject}" -> ${to.length} recipient(s) via ${t.label}`);
       return true;
     } catch (err: any) {
       this.logger.error(`[mail:failed] "${input.subject}" -> ${to.join(', ')}: ${err?.message}`);
+      if (input.tenantId) {
+        await this.settings?.recordVerification(input.tenantId, false, err?.message ?? 'send failed');
+      }
       return false;
     }
+  }
+
+  /**
+   * Transport for a tenant, or the platform default.
+   *
+   * Tenant transports are cached because building one opens a connection pool;
+   * `invalidate()` is called whenever settings are saved so a corrected
+   * password takes effect immediately instead of after a restart.
+   */
+  private async transportFor(
+    tenantId?: string,
+  ): Promise<{ transporter: Transporter; from: string; label: string } | null> {
+    if (tenantId && this.settings) {
+      const cached = this.tenantTransports.get(tenantId);
+      if (cached) return cached;
+
+      const cfg = await this.settings.resolveFor(tenantId);
+      if (cfg) {
+        const built = {
+          transporter: this.build(cfg.host, cfg.port, cfg.username, cfg.password),
+          from: cfg.from,
+          label: `${cfg.host} (tenant)`,
+        };
+        this.tenantTransports.set(tenantId, built);
+        return built;
+      }
+      // No tenant config — fall through to the platform default.
+    }
+    if (!this.enabled || !this.transporter) return null;
+    return { transporter: this.transporter, from: this.from, label: 'platform default' };
+  }
+
+  /** Drop a cached transport so the next send picks up new settings. */
+  invalidate(tenantId: string): void {
+    const existing = this.tenantTransports.get(tenantId);
+    if (existing) {
+      existing.transporter.close?.();
+      this.tenantTransports.delete(tenantId);
+    }
+  }
+
+  private build(host: string, port: number, user: string, pass: string): Transporter {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      ...(user && pass ? { auth: { user, pass } } : {}),
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+    });
   }
 
   /** Whether a transport is configured. Says nothing about whether it works. */
@@ -107,15 +179,24 @@ export class MailService implements OnModuleInit {
    * looks enabled while every send fails in the background. This is what the
    * admin console should ask before claiming email works.
    */
-  async verify(): Promise<{ ok: boolean; detail: string }> {
-    if (!this.enabled || !this.transporter) {
-      return { ok: false, detail: 'SMTP is not configured (SMTP_HOST is empty).' };
+  async verify(tenantId?: string): Promise<{ ok: boolean; detail: string; using: string }> {
+    const t = await this.transportFor(tenantId);
+    if (!t) {
+      return {
+        ok: false,
+        using: 'none',
+        detail: 'No SMTP server is configured for this workspace.',
+      };
     }
     try {
-      await this.transporter.verify();
-      return { ok: true, detail: `Authenticated with ${this.config.get('SMTP_HOST')}.` };
+      await t.transporter.verify();
+      const result = { ok: true, using: t.label, detail: `Connected and authenticated (${t.label}).` };
+      if (tenantId) await this.settings?.recordVerification(tenantId, true, '');
+      return result;
     } catch (err: any) {
-      return { ok: false, detail: err?.message ?? 'Verification failed.' };
+      const detail = err?.message ?? 'Verification failed.';
+      if (tenantId) await this.settings?.recordVerification(tenantId, false, detail);
+      return { ok: false, using: t.label, detail };
     }
   }
 

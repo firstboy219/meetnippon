@@ -66,6 +66,7 @@ export class UserAdminService {
     });
     const base = this.config.get<string>('APP_BASE_URL') || 'https://meetnippon.cosger.online';
     this.mail.send({
+      tenantId: getTenantStore()?.tenantId as string,
       to: email,
       subject: `Your ${tenant?.name ?? 'MeetNippon'} account is ready`,
       text: [

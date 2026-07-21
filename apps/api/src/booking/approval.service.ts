@@ -140,6 +140,7 @@ export class ApprovalService {
     });
 
     this.mail.send({
+      tenantId,
       to: booking.principal.email,
       subject: `${approved ? 'Approved' : 'Rejected'}: ${booking.title}`,
       text: [

@@ -10,6 +10,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'TenantFeatureFlag',
   'EmailTemplate',
   'TenantApiKey',
+  'TenantMailSetting',
   'User',
   'OfficeLocation',
   'Building',

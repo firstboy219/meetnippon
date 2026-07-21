@@ -213,6 +213,18 @@ tr:last-child td { border-bottom: none; }
 
 .modal-wide { width: 760px; }
 
+/* ---------- Mail settings ---------- */
+.mail-state { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; padding: 16px 20px; border-radius: var(--radius); margin-bottom: 20px;
+  border: 1px solid var(--line); background: #F1F0EB; }
+.mail-state strong { font-size: 14px; }
+.mail-state-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; max-width: 62ch; }
+.mail-state.ok { background: var(--green-tint); border-color: #BFE3C6; }
+.mail-state.ok strong { color: #1F6B2B; }
+.mail-state.unknown { background: var(--amber-tint); border-color: #F0DCB4; }
+.mail-state.unknown strong { color: #8A5A0A; }
+.mail-state.off { background: #F1F0EB; }
+
 /* ---------- Floor plan editor ---------- */
 .plan-editor { display: flex; flex-direction: column; gap: 4px; }
 .upload-row { display: flex; gap: 8px; align-items: center; }

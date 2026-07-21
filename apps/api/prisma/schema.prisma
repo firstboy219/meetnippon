@@ -124,6 +124,7 @@ model Tenant {
 
   domains        TenantDomain[]
   branding       TenantBranding?
+  mailSetting    TenantMailSetting?
   featureFlags   TenantFeatureFlag[]
   emailTemplates EmailTemplate[]
   apiKeys        TenantApiKey[]
@@ -260,6 +261,28 @@ model User {
 // ============================================================
 // LOCATION HIERARCHY (BRD 7.2, 7.13.1)
 // ============================================================
+/// Per-tenant outbound SMTP, configured from the admin console.
+/// Falls back to the platform env defaults when absent.
+model TenantMailSetting {
+  id        String  @id @default(cuid())
+  tenantId  String  @unique
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  host      String
+  port      Int     @default(587)
+  username  String  @default("")
+  /// AES-256-GCM ciphertext (iv:tag:data, base64). Never returned by the API.
+  passwordEnc String @default("")
+  fromName  String?
+  fromEmail String?
+  enabled   Boolean @default(true)
+  /// Outcome of the last real connection attempt, for the admin console.
+  lastVerifiedAt DateTime?
+  lastError      String?
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
 model OfficeLocation {
   id             String   @id @default(cuid())
   tenantId       String

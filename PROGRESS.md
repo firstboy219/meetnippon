@@ -37,6 +37,7 @@
 | UX-1 | Booking flow: participants + invite confirmation, edit, post-book redirect | ✅ DONE (2026-07-20) |
 | SYNC-1 | Admin settings actually reach the user portal | ✅ DONE (2026-07-20) |
 | MAIL-1 | Outbound email service | ⚠️ BUILT & DEPLOYED — **blocked on a valid SMTP credential** |
+| MAIL-2 | SMTP configurable from the admin console (encrypted at rest) | ✅ DONE (2026-07-21) |
 
 ---
 
@@ -71,6 +72,50 @@ as *distinct* in a unique index, so the constraint does not stop duplicates. Tha
 ended up with two TENANT policies. The resolver now orders by `id` so resolution is at least
 deterministic, but **the real fix is a partial unique index**, and the duplicate rows should be
 merged. Not done here: it is a migration plus prod data surgery.
+
+## MAIL-2 — SMTP from the admin console — DONE (2026-07-21)
+
+Owner wanted to type the SMTP details (including the app password) into the admin UI instead of
+editing `.env` on the server. **132/132 tests pass** (22 new).
+
+**Admin → Email** (`/mail` in the console): provider preset (Gmail / Microsoft 365 / SES / Resend /
+custom), host, port, username, password, sender name + address, an enable switch, **Test connection**
+and **Send test email**. A status banner says plainly which of *not configured / disabled / working /
+last attempt failed / not tested yet* applies, and shows the real SMTP error when there is one.
+
+**The password is the sensitive part, so:**
+- Stored **AES-256-GCM encrypted** (`src/common/secret-box.ts`), format `v1:iv:tag:ciphertext`.
+  GCM means a tampered row fails to decrypt instead of yielding garbage; the `v1` prefix leaves room
+  to rotate the scheme. Verified live: the column reads `v1:jNlhj2oMK6usBp8S:…` and a
+  `LIKE '%plaintext%'` query over the table returns **0 rows**.
+- **Never returned by any route.** The API only ever reports `hasPassword: true|false`. Confirmed
+  live that neither the plaintext nor the ciphertext appears in the settings response.
+- **Omitting the field keeps the stored value**, so an admin can change the port without knowing the
+  credential; sending `""` clears it.
+- **Not written to the audit log** — the log records host/port/username/enabled only.
+- Key comes from `MAIL_SECRET_KEY` (generated on the server), falling back to a scrypt derivation
+  from `JWT_ACCESS_SECRET` with a purpose-specific salt so it is a separate key, not a reuse.
+  **If `MAIL_SECRET_KEY` is lost, stored SMTP passwords become unreadable** and each workspace must
+  re-enter one — recoverable, but back the key up with the rest of the env.
+
+**Resolution order** — a tenant's own settings win; with none (or disabled, or a password that will
+not decrypt) it falls back to the platform env defaults. A password that fails to decrypt
+deliberately yields *no* config rather than silently attempting an anonymous connection.
+Transports are cached per tenant and invalidated on save, so a corrected password takes effect on
+the next send rather than after a restart.
+
+**Schema** — `TenantMailSetting` (one row per tenant, cascade on tenant delete), migration
+`20260721013204_tenant_mail_settings`, added to `TENANT_SCOPED_MODELS`. Applied additively:
+tenants 2→2, bookings 18→18.
+
+**Verified live** — settings save and read back without the secret; editing another field preserves
+the password; the status probe uses the **tenant** transport (`using: "smtp.gmail.com (tenant)"`)
+and surfaces the true Gmail error; EMPLOYEE gets **403** on all four routes and unauthenticated
+**401**; invalid port / missing host / malformed sender address all **400**. Probe rows deleted
+afterwards (0 left).
+
+**Still true from MAIL-1**: the Gmail credential itself is invalid, so email will not actually
+deliver until a working App Password is entered — which is now a form field rather than a server edit.
 
 ## MAIL-1 — Outbound email — BUILT, BLOCKED ON CREDENTIAL (2026-07-20)
 
