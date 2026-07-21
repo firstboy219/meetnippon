@@ -29,3 +29,6 @@ coverage/
 
 # Runtime user uploads (bind-mounted volume), not source
 uploads/
+
+# Database dumps: contain password hashes and encrypted secrets
+backups/
