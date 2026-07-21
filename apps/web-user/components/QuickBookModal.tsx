@@ -33,6 +33,8 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
   const [from, setFrom] = useState(start);
   const [duration, setDuration] = useState(60);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [type, setType] = useState<'OFFLINE' | 'ONLINE' | 'HYBRID'>('OFFLINE');
+  const [meetingLink, setMeetingLink] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -49,7 +51,11 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
     try {
       const res = await api.post<Booking>('/bookings', {
         title,
-        resourceId,
+        type,
+        // A pure-online meeting occupies no room, so the resource is dropped —
+        // otherwise it would block a physical room nobody is sitting in.
+        ...(type === 'ONLINE' ? {} : { resourceId }),
+        ...(type !== 'OFFLINE' && meetingLink.trim() ? { meetingLink: meetingLink.trim() } : {}),
         startTime: zonedToUtcIso(day, from, getTenantTz()),
         endTime: zonedToUtcIso(day, to, getTenantTz()),
         ...(participants.length ? { participants: toWire(participants), notify: true } : {}),
@@ -96,6 +102,29 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
             </div>
           </div>
         </div>
+
+        <div className="f-group">
+          <label className="f-label">{t('modal.meeting_type')}</label>
+          <div className="row-actions">
+            {(['OFFLINE', 'ONLINE', 'HYBRID'] as const).map((k) => (
+              <button key={k} type="button" className={`filter-pill ${type === k ? 'active' : ''}`}
+                aria-pressed={type === k} onClick={() => setType(k)}>
+                {t(`modal.type_${k.toLowerCase()}`)}
+              </button>
+            ))}
+          </div>
+          {type === 'ONLINE' ? (
+            <div className="f-hint">{t('modal.online_no_room')}</div>
+          ) : null}
+        </div>
+
+        {type !== 'OFFLINE' ? (
+          <div className="f-group">
+            <label className="f-label">{t('modal.meeting_link')}</label>
+            <input className="f-input" type="url" value={meetingLink}
+              onChange={(e) => setMeetingLink(e.target.value)} placeholder="https://teams.microsoft.com/…" />
+          </div>
+        ) : null}
 
         <Participants value={participants} onChange={setParticipants} selfEmail={user?.email} />
 

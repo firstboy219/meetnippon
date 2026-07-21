@@ -500,11 +500,37 @@ export class BookingService {
     return updated;
   }
 
-  async checkIn(id: string, token: string) {
+  async checkIn(id: string, token?: string) {
+    const caller = this.caller();
     const booking = await this.prisma.scoped.booking.findUnique({ where: { id } });
     if (!booking) throw new NotFoundException('Booking not found.');
-    if (!booking.checkInToken || booking.checkInToken !== token) {
-      throw new BadRequestException('Invalid check-in token.');
+
+    /*
+     * Two ways in, and they authorise differently:
+     *
+     *  - with a token: whoever scanned the code at the room proves presence,
+     *    so the token itself is the credential and must match exactly;
+     *  - without one: the person who owns the booking checks in from the app.
+     *    They are already authenticated and it is their own booking, so no
+     *    second secret is needed — requiring one would make the button in the
+     *    portal impossible to use, since nobody can see the token.
+     *
+     * A wrong token is always refused, even from the owner.
+     */
+    if (token !== undefined) {
+      if (!booking.checkInToken || booking.checkInToken !== token) {
+        throw new BadRequestException('Invalid check-in token.');
+      }
+    } else {
+      const isOwner =
+        booking.principalId === caller.userId || booking.bookerId === caller.userId;
+      if (!isOwner && caller.role !== 'ADMIN') {
+        throw new ForbiddenException('You can only check in to your own booking.');
+      }
+    }
+
+    if (booking.checkedInAt) {
+      throw new BadRequestException('This booking is already checked in.');
     }
     if (booking.status !== 'APPROVED') {
       throw new BadRequestException('Only approved bookings can be checked in.');

@@ -6,6 +6,10 @@ export class CancelBookingDto {
 }
 
 export class CheckInDto {
-  @IsString()
-  token!: string;
+  /**
+   * Only supplied by the room's QR flow. The owner checking in from the portal
+   * sends nothing — they are already authenticated and cannot see the token.
+   */
+  @IsOptional() @IsString()
+  token?: string;
 }

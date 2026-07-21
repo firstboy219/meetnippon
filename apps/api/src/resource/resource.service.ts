@@ -104,6 +104,112 @@ export class ResourceService {
     return { ...resource, policy: toPublic(rules) };
   }
 
+  /** Floors that actually have a plan image — the only ones Denah can draw. */
+  async floorsWithPlans() {
+    const floors = await this.prisma.scoped.floor.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        building: { select: { id: true, name: true } },
+        floorPlan: { select: { imageUrl: true } },
+        _count: { select: { resources: true } },
+      },
+    });
+    return floors
+      .filter((f) => f.floorPlan?.imageUrl)
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        building: f.building,
+        rooms: f._count.resources,
+      }));
+  }
+
+  /**
+   * A floor plan with each pinned room's state right now.
+   *
+   * The pin colour is the whole point of this view, so availability is resolved
+   * here rather than leaving the client to fetch a schedule per room.
+   */
+  async floorPlanView(floorId: string, day?: string) {
+    const floor = await this.prisma.scoped.floor.findUnique({
+      where: { id: floorId },
+      include: {
+        building: { select: { name: true } },
+        floorPlan: { select: { imageUrl: true, pins: true } },
+      },
+    });
+    if (!floor) throw new NotFoundException('Floor not found.');
+
+    const tz = await tenantTimezone(this.prisma);
+    const base = day && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? new Date(`${day}T12:00:00.000Z`)
+      : new Date();
+    const dayStart = startOfDayInTz(base, tz);
+    const dayEnd = addLocalDays(dayStart, 1, tz);
+    const now = new Date();
+
+    const resources = await this.listRaw({ floorId });
+    const policies = await this.resolver.resolveMany(
+      resources.map((r) => ({ id: r.id, category: r.category })),
+    );
+    const bookings = await this.prisma.scoped.booking.findMany({
+      where: {
+        resourceId: { in: resources.map((r) => r.id) },
+        status: { in: ['PENDING', 'APPROVED', 'WAITLIST'] },
+        startTime: { lt: dayEnd },
+        endTime: { gt: dayStart },
+      },
+      orderBy: { startTime: 'asc' },
+      select: {
+        id: true, title: true, startTime: true, endTime: true, status: true, resourceId: true,
+        principal: { select: { fullName: true } },
+      },
+    });
+
+    const byRoom = new Map<string, typeof bookings>();
+    for (const b of bookings) {
+      const l = byRoom.get(b.resourceId!) ?? [];
+      l.push(b);
+      byRoom.set(b.resourceId!, l);
+    }
+
+    const pins = (floor.floorPlan?.pins as unknown as { resourceId: string; x: number; y: number }[]) ?? [];
+
+    return {
+      floor: { id: floor.id, name: floor.name, building: floor.building },
+      imageUrl: floor.floorPlan?.imageUrl ?? null,
+      timezone: tz,
+      day: localDateKey(dayStart, tz),
+      isToday: localDateKey(now, tz) === localDateKey(dayStart, tz),
+      rooms: resources.map((r) => {
+        const list = byRoom.get(r.id) ?? [];
+        const current = list.find((b) => b.startTime <= now && b.endTime > now) ?? null;
+        const next = list.find((b) => b.startTime > now) ?? null;
+        const pin = pins.find((p) => p.resourceId === r.id) ?? null;
+        return {
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          capacity: r.capacity,
+          category: r.category,
+          facilities: r.facilities,
+          status: r.status,
+          pin,
+          // 'booked' only means right now; a room busy later today is still
+          // free to walk into, and the map should say so.
+          state: r.status !== 'ACTIVE' ? 'maintenance'
+            : current ? 'booked'
+            : list.length ? 'pending'
+            : 'available',
+          current,
+          next,
+          bookings: list,
+          policy: toPublic(policies.get(r.id)!),
+        };
+      }),
+    };
+  }
+
   /**
    * Every room's day in one shot, for the schedule timeline.
    *

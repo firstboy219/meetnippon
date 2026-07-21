@@ -48,6 +48,64 @@
 | PROF-1 | Self-service profile: name, picture, personal email, password | ✅ DONE (2026-07-21) |
 | BUG-1 | Fix: booking with participants rejected with 400 | ✅ FIXED (2026-07-21) |
 | QR-2 | Public room page from the door QR; booking still requires sign-in | ✅ DONE (2026-07-21) |
+| GAP-1 | Mockup/BRD audit — Denah, meeting types, check-in, work location | ✅ DONE (2026-07-21) |
+
+---
+
+## GAP-1 — Mockup & BRD audit — DONE (2026-07-21)
+
+Owner asked what the mockups and BRD specify that is not built. **180/180 tests pass** (5 new).
+Nothing existing was removed.
+
+**Audit result.** The **admin** mockup is fully covered (dashboard, denah, integrasi, rules, stats,
+users). The **user** mockup has 7 views and `denah` was the only one missing. Beneath that, a whole
+class of features turned out to have a working, tested API and **no UI at all** — they were built in
+Phase 2/6 and never surfaced.
+
+**Closed in this pass:**
+
+| Feature | BRD | Was |
+|---|---|---|
+| **Denah** floor plan | 7.2 | admin could upload plans and place pins; users could not see them |
+| **Meeting type** offline/online/hybrid + link | 7.4.7 | API accepted `type`/`meetingLink`; the form always sent OFFLINE |
+| **Check-in** | 7.3.4, 7.7 | endpoint existed; nothing in the portal called it |
+| **Work location** office/WFH | 7.13 | geofence engine complete and tested; no UI ever called it |
+
+Denah reads through new user-facing endpoints (`GET /resources/floors`, `.../floors/:id/plan`) that
+resolve each pinned room's live state server-side — the pin colour is the point of the view, so
+making the client fetch a schedule per room would defeat it. A pure-**online** meeting now drops the
+resource, so it no longer holds a physical room nobody sits in.
+
+### Two real bugs found by testing the new UI
+
+**1. Work-location day was recorded one day early, always.** `WorkLocationLog.day` is `@db.Date`,
+but the code stored `startOfDayInTz(...)` — an *instant*. For Asia/Jakarta local midnight is
+**17:00 UTC on the previous day**, and Postgres truncates that to the previous date. Every WFH/office
+day for any tenant ahead of UTC was off by one, and the admin analytics "in the office today" query
+compared against the same wrong value, so it consistently reported zero. New `localDateOnly()`
+returns UTC midnight of the local calendar date, which is what a DATE column must be given.
+Verified live: at 22:28 WIB the day now records as `2026-07-21`; it recorded `2026-07-20` before.
+
+**2. Check-in was impossible from the portal.** `CheckInDto` required a `token`, but the token is
+generated only when a policy sets `checkInRequired`, and no user can see it — it exists for the QR
+code at the room door. The button returned `400 token must be a string`. The token is now optional
+and the two paths authorise differently: **with** a token it must match exactly (the scanner proves
+presence); **without** one the caller must own the booking (already authenticated, their own row).
+A wrong token is refused even from the owner, double check-in is refused rather than silently
+overwriting the timestamp, and someone else's booking gives 403.
+
+**Not a bug, corrected assumption** — a geofence probe returned WFH from what I believed were the
+office coordinates. The owner had moved the office to `HQ Ancol` at different coordinates; my probe
+used stale ones. Re-tested against the current values: **OFFICE** at the office, **WFH** 50 km away.
+
+**Still unbuilt from the BRD** (API support exists, no UI): recurrence (7.3.2), reminder chips
+(7.6), schedule assistant / participant availability (7.4.6), recording opt-in (7.8). Left for the
+next pass rather than half-built.
+
+**Data note** — `WorkLocationLog` rows written before this fix carry the off-by-one day. Only test
+rows existed and they were removed; no real history was affected.
+
+---
 
 ---
 

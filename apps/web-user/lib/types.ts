@@ -153,7 +153,43 @@ export interface Booking {
   participants?: Participant[];
   bookerId?: string;
   principalId?: string;
+  meetingLink?: string | null;
+  checkedInAt?: string | null;
   invites?: InviteResult;
+}
+
+/** Today's work location. Coordinates are never stored — only this. */
+export interface WorkLocation {
+  id?: string;
+  day?: string;
+  location: 'OFFICE' | 'WFH' | 'UNKNOWN';
+  officeName?: string | null;
+  isManual?: boolean;
+}
+
+/** A floor that has a plan image, for the Denah picker. */
+export interface FloorOption {
+  id: string; name: string; rooms: number;
+  building?: { id: string; name: string } | null;
+}
+
+export interface FloorPlanView {
+  floor: { id: string; name: string; building?: { name: string } | null };
+  imageUrl: string | null;
+  timezone: string;
+  day: string;
+  isToday: boolean;
+  rooms: {
+    id: string; name: string; type: 'ROOM' | 'DESK'; capacity: number;
+    category: string | null; facilities: string[]; status: string;
+    /** Fraction of the plan image, 0..1. Null when never placed. */
+    pin: { resourceId: string; x: number; y: number } | null;
+    state: 'available' | 'pending' | 'booked' | 'maintenance';
+    current: RoomBooking | null;
+    next: RoomBooking | null;
+    bookings: RoomBooking[];
+    policy?: PublicPolicy;
+  }[];
 }
 
 export interface ExternalTask {

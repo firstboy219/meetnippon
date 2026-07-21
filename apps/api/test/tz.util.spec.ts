@@ -3,6 +3,7 @@ import {
   isValidTimeZone,
   isoWeekdayInTz,
   localDateKey,
+  localDateOnly,
   minuteOfDayInTz,
   startOfDayInTz,
   zonedParts,
@@ -12,6 +13,47 @@ import { DEFAULT_RULES } from '../src/booking/policy/policy.types';
 
 const JKT = 'Asia/Jakarta'; // UTC+7, no DST
 const NY = 'America/New_York'; // DST, for the tricky cases
+
+describe('localDateOnly — what a DATE column must be given', () => {
+  /*
+   * The bug this guards: storing startOfDayInTz() into a `@db.Date` column.
+   * For Asia/Jakarta local midnight is 17:00 UTC the previous day, and Postgres
+   * truncates that to the previous date — so every work-location day was
+   * recorded one day early.
+   */
+  it('keeps the local calendar date for a tenant ahead of UTC', () => {
+    // 22:19 on 21 Jul in Jakarta is still 15:19 on 21 Jul UTC
+    const evening = new Date('2026-07-21T15:19:00.000Z');
+    expect(localDateKey(evening, JKT)).toBe('2026-07-21');
+    expect(localDateOnly(evening, JKT).toISOString()).toBe('2026-07-21T00:00:00.000Z');
+    // the instant-based helper is the one that would have truncated wrongly
+    expect(startOfDayInTz(evening, JKT).toISOString()).toBe('2026-07-20T17:00:00.000Z');
+  });
+
+  it('is right just after local midnight, when UTC is still the day before', () => {
+    // 00:30 on 22 Jul in Jakarta = 17:30 on 21 Jul UTC
+    const justAfterMidnight = new Date('2026-07-21T17:30:00.000Z');
+    expect(localDateOnly(justAfterMidnight, JKT).toISOString()).toBe('2026-07-22T00:00:00.000Z');
+  });
+
+  it('is right for a tenant behind UTC, where local is still yesterday', () => {
+    // 20:00 on 21 Jul in New York = 00:00 on 22 Jul UTC
+    const evening = new Date('2026-07-22T00:00:00.000Z');
+    expect(localDateKey(evening, NY)).toBe('2026-07-21');
+    expect(localDateOnly(evening, NY).toISOString()).toBe('2026-07-21T00:00:00.000Z');
+  });
+
+  it('always lands on exact UTC midnight, so a DATE column stores it verbatim', () => {
+    for (const iso of ['2026-01-01T00:00:00.000Z', '2026-07-21T15:19:00.000Z', '2026-12-31T23:59:59.000Z']) {
+      for (const tz of [JKT, NY, 'UTC']) {
+        const d = localDateOnly(new Date(iso), tz);
+        expect(d.getUTCHours()).toBe(0);
+        expect(d.getUTCMinutes()).toBe(0);
+        expect(d.getUTCSeconds()).toBe(0);
+      }
+    }
+  });
+});
 
 describe('tz.util', () => {
   it('validates IANA zones', () => {

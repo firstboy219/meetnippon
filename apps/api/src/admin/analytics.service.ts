@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { startOfDayInTz } from '../common/tz.util';
+import { localDateOnly } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
 /** Read-only tenant analytics for the admin dashboard (BRD Phase 7). */
@@ -10,7 +10,9 @@ export class AnalyticsService {
 
   async overview() {
     const since30 = new Date(Date.now() - 30 * 86400000);
-    const today = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
+    // Must match how WorkLocationLog.day is written — a DATE column holding the
+    // tenant's local calendar date, not the instant of local midnight.
+    const today = localDateOnly(new Date(), await tenantTimezone(this.prisma));
 
     const [byStatus, byType, last30, topRaw, wfhToday] = await Promise.all([
       this.prisma.scoped.booking.groupBy({ by: ['status'], _count: { _all: true } }),

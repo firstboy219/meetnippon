@@ -34,6 +34,33 @@ export default function BookingsPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * Check-in opens shortly before the start and closes at the end — the point
+   * is to prove someone actually turned up, so it is not offered a day early.
+   */
+  function canCheckIn(b: Booking): boolean {
+    if (b.checkedInAt || b.status !== 'APPROVED') return false;
+    const now = Date.now();
+    const start = new Date(b.startTime).getTime();
+    const end = new Date(b.endTime).getTime();
+    return now >= start - 15 * 60_000 && now < end;
+  }
+
+  async function checkIn(id: string) {
+    setBusy(true);
+    try {
+      // No token: the owner checking in from the portal. The token path is for
+      // the QR code at the room.
+      await api.post(`/bookings/${id}/check-in`, {});
+      push(t('bookings.checked_in_ok'), 'success');
+      load();
+    } catch (e: any) {
+      push(e?.message || t('bookings.check_in_fail'), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function cancel(id: string) {
     setBusy(true);
     try {
@@ -87,6 +114,13 @@ export default function BookingsPage() {
                 <td>
                   {CANCELLABLE.includes(b.status) ? (
                     <div className="row-actions">
+                      {canCheckIn(b) ? (
+                        <button className="btn btn-primary btn-sm" disabled={busy}
+                          onClick={() => checkIn(b.id)}>{t('bookings.check_in')}</button>
+                      ) : null}
+                      {b.checkedInAt ? (
+                        <span className="swatch available"><span className="dot" />{t('bookings.checked_in')}</span>
+                      ) : null}
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditing(b)}>{t('common.edit')}</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(b.id)}>{t('common.cancel')}</button>
                     </div>

@@ -14,6 +14,7 @@ const TITLES: [string, string][] = [
   ['/book', 'nav.book'],
   ['/bookings', 'nav.bookings'],
   ['/profile', 'nav.profile'],
+  ['/denah', 'nav.denah'],
   ['/schedule', 'nav.schedule'],
   ['/calendar', 'nav.calendar'],
   ['/history', 'nav.history'],

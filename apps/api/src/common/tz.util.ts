@@ -28,6 +28,18 @@ export function formatRange(start: Date, end: Date, tz: string): string {
   return `${day}, ${hhmm(start)}–${hhmm(end)} (${zone})`;
 }
 
+/**
+ * The tenant-local calendar date, as a value safe to store in a `DATE` column.
+ *
+ * `startOfDayInTz` returns an *instant* — for Asia/Jakarta that is 17:00 UTC on
+ * the previous day, and Postgres truncates it to that previous date. A DATE
+ * column holds a calendar day with no zone, so it must be given UTC midnight of
+ * the local date instead.
+ */
+export function localDateOnly(instant: Date, tz: string): Date {
+  return new Date(`${localDateKey(instant, tz)}T00:00:00.000Z`);
+}
+
 const PARTS_FMT_CACHE = new Map<string, Intl.DateTimeFormat>();
 
 function partsFormatter(tz: string): Intl.DateTimeFormat {

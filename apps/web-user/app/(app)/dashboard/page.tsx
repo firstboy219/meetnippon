@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import type { Booking } from '@/lib/types';
 import { fmtTime, fmtDate, todayLocal, localDateKey, getTenantTz } from '@/lib/format';
+import WorkLocationChip from '@/components/WorkLocationChip';
 
 const STATUS_SWATCH: Record<string, string> = {
   APPROVED: 'available', PENDING: 'pending', WAITLIST: 'pending',
@@ -58,6 +59,7 @@ export default function DashboardPage() {
         <div>
           <h1>{t('dash.greeting')}, {user?.fullName?.split(' ')[0]}</h1>
           <p>{upcoming.length} {upcoming.length === 1 ? t('dash.upcoming_one') : t('dash.upcoming_many')}.</p>
+          <WorkLocationChip />
         </div>
         <button className="btn hero-cta" onClick={() => router.push('/book')}>{t('dash.quickbook')}</button>
       </div>

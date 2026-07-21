@@ -361,6 +361,41 @@ describe('booking core', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('lets the owner check in without a token, and refuses a wrong one', async () => {
+    // A booking running right now, so check-in is open.
+    const now = Date.now();
+    const b: any = await prisma.booking.create({
+      data: {
+        tenantId: A, title: 'Check me in', type: 'OFFLINE', resourceId: 'roomA1',
+        principalId: EMP, bookerId: EMP,
+        startTime: new Date(now - 5 * 60_000), endTime: new Date(now + 30 * 60_000),
+        status: 'APPROVED',
+      },
+    });
+
+    // A supplied token must match even for the owner — this booking has none.
+    await expect(asEmp(() => booking.checkIn(b.id, 'made-up-token')))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    // The owner with no token is the portal button, and it works.
+    const done: any = await asEmp(() => booking.checkIn(b.id));
+    expect(done.checkedInAt).not.toBeNull();
+
+    // Checking in twice is refused rather than silently overwriting the time.
+    await expect(asEmp(() => booking.checkIn(b.id))).rejects.toBeInstanceOf(BadRequestException);
+
+    // Somebody else's booking is not theirs to check in to.
+    const other: any = await prisma.booking.create({
+      data: {
+        tenantId: A, title: 'Not yours', type: 'OFFLINE', resourceId: 'roomA3',
+        principalId: APPR, bookerId: APPR,
+        startTime: new Date(now - 5 * 60_000), endTime: new Date(now + 30 * 60_000),
+        status: 'APPROVED',
+      },
+    });
+    await expect(asEmp(() => booking.checkIn(other.id))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('does not leak bookings across tenants', async () => {
     const bInB: any = await runWithTenant(
       { tenantId: B, userId: EMP_B, role: 'EMPLOYEE' },

@@ -4,7 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { classifyLocation, OfficeGeo } from './geo.util';
 import { ReportLocationDto } from './dto/report-location.dto';
-import { startOfDayInTz } from '../common/tz.util';
+import { localDateOnly } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
 /**
@@ -40,7 +40,10 @@ export class WorkLocationService {
     }
 
     const userId = this.userId();
-    const day = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
+    // `day` is a DATE column, so it needs the local calendar date — not the
+    // instant of local midnight, which Postgres truncates to the day before
+    // for any tenant ahead of UTC.
+    const day = localDateOnly(new Date(), await tenantTimezone(this.prisma));
     const existing = await this.prisma.scoped.workLocationLog.findFirst({ where: { userId, day } });
     const saved = existing
       ? await this.prisma.scoped.workLocationLog.update({ where: { id: existing.id }, data: { location, officeName } })
@@ -52,7 +55,10 @@ export class WorkLocationService {
 
   async today() {
     const userId = this.userId();
-    const day = startOfDayInTz(new Date(), await tenantTimezone(this.prisma));
+    // `day` is a DATE column, so it needs the local calendar date — not the
+    // instant of local midnight, which Postgres truncates to the day before
+    // for any tenant ahead of UTC.
+    const day = localDateOnly(new Date(), await tenantTimezone(this.prisma));
     const log = await this.prisma.scoped.workLocationLog.findFirst({ where: { userId, day } });
     return log ?? { location: 'UNKNOWN', officeName: null, day };
   }
