@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import type { AppNotification } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
+import StatusMenu from './StatusMenu';
 
 const TYPE_ICON: Record<string, string> = {
   approval: '📋', reminder: '⏰', mention: '💬', recording_ready: '🎬',
@@ -14,9 +15,7 @@ const TYPE_ICON: Record<string, string> = {
 
 export default function Topbar({ title, onMenu }: { title: string; onMenu: () => void }) {
   const { lang, setLang, t } = useI18n();
-  const { user, logout } = useAuth();
-  const initials = (user?.fullName || '?')
-    .split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const { logout } = useAuth();
 
   return (
     <header className="topbar">
@@ -36,11 +35,7 @@ export default function Topbar({ title, onMenu }: { title: string; onMenu: () =>
           <button className={lang === 'id' ? 'active' : ''} onClick={() => setLang('id')}>ID</button>
         </div>
         <div className="user-chip">
-          <div className="avatar">{initials}</div>
-          <div className="user-meta">
-            <div className="name">{user?.fullName}</div>
-            <div className="role">{user?.role}</div>
-          </div>
+          <StatusMenu />
           <button className="btn btn-ghost btn-sm" onClick={logout}>{t('common.signout')}</button>
         </div>
       </div>

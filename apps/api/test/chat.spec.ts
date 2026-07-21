@@ -11,6 +11,7 @@ import { ChatService } from '../src/chat/chat.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
 import { ConfigService } from '@nestjs/config';
 import { TestMailService } from './helpers/test-mail';
+import { PresenceService } from '../src/presence/presence.service';
 
 const T = 'chat-tenant';
 const U1 = 'chat-u1', U2 = 'chat-u2', U3 = 'chat-u3';
@@ -20,8 +21,9 @@ const audit = new AuditService(prisma);
 const flags = new FeatureFlagService(prisma, audit);
 const notifications = new NotificationService(prisma, flags);
 const mail = new TestMailService();
+const presence = new PresenceService(prisma);
 const chat = new ChatService(prisma, notifications, flags, mail,
-  new ConfigService({ APP_BASE_URL: 'https://test.local' }));
+  new ConfigService({ APP_BASE_URL: 'https://test.local' }), presence);
 
 const as = <R>(uid: string, fn: () => Promise<R>) =>
   runWithTenant({ tenantId: T, userId: uid, role: 'EMPLOYEE' }, fn);

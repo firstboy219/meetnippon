@@ -44,6 +44,51 @@
 | DATA-1 | PT NPC master data: 10 rooms + 255 active bookings imported | ✅ DONE (2026-07-21) |
 | DEMO-1 | Single-organisation mode: billing hidden, workspace pinned, limits raised | ✅ DONE (2026-07-21) |
 | ADV-1 | Room schedule timeline + advanced chat with offline email | ✅ DONE (2026-07-21) |
+| PRES-1 | Presence: available / busy / DND / idle / offline + auto "in a meeting" | ✅ DONE (2026-07-21) |
+
+---
+
+## PRES-1 — Presence & status — DONE (2026-07-21)
+
+From the mockup (`mockup_user_portal.html`), which specified an avatar dropdown with
+Tersedia / Sibuk / Jangan Ganggu / Idle-Away / Offline plus **"↺ Kembali ke otomatis"**, and states
+that status is derived from *activity and schedule* with manual as a temporary override.
+The schema already carried `presence`, `presenceManual`, `presenceLocked` and `lastSeenAt` — nothing
+ever wrote them. **165/165 tests pass** (13 new). No existing feature was removed.
+
+**Status is derived, never simply read.** The stored column cannot be trusted: someone who shuts
+their laptop leaves it reading AVAILABLE forever. `effectivePresence()` resolves, in order:
+
+1. an **admin lock** (`presenceLocked`) — outranks everything;
+2. the user's **own choice** — but only while they are still around, so a manual "Available" set on
+   Friday does not still show on Monday;
+3. **in a meeting right now** → BUSY. Derived from the booking calendar, so it is correct even if
+   the person never touches the app during the meeting — this is the "on meet" state;
+4. plain activity: heartbeat within 5 min → AVAILABLE, within 30 min → AWAY (idle), else OFFLINE.
+
+**API** — `GET/PUT /me/presence` and `POST /me/presence/heartbeat`. `PUT {presence:"AUTO"}` clears
+the override rather than storing another value. Unknown values are rejected (`ONLINE` is *not* a
+member of this enum — see below). `inMeeting()` resolves a whole set of users in **one** query
+because it runs on every chat list and directory render.
+
+**Web** — avatar dropdown in the topbar with the five statuses, a tick on the current one, and
+"back to automatic" (disabled when already automatic). The sub-label says *why*: "in a meeting",
+"automatic", or "set by you". Heartbeat every 60s, and immediately on tab focus so returning to a
+background tab does not wait a full cycle. Presence dots follow the mockup exactly, including the
+white dash that distinguishes DND from Busy.
+
+**Chat and the directory now show the derived value.** Proven live: the stored column read `DND`
+while the directory correctly reported `BUSY (meeting)`.
+
+**Corrected assumption, again** — I had used `ONLINE` in the earlier chat work; the enum is
+`AVAILABLE | BUSY | DND | AWAY | OFFLINE`. Prisma rejected it at run time and the labels, dots and
+the choice parser now match the schema.
+
+**One deliberate change worth flagging** — the topbar user chip previously showed the user's *role*
+under their name. Per the mockup that line now carries the status. Nothing was removed from the
+product; if the role should also appear there, it is a one-line addition.
+
+---
 
 ---
 

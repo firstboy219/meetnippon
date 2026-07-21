@@ -7,6 +7,7 @@ import { FeatureFlagService } from '../flags/feature-flag.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { MailService } from '../mail/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { PresenceService } from '../presence/presence.service';
 
 /** Internal chat (BRD 7.12), gated by the `chat` feature flag. */
 @Injectable()
@@ -17,6 +18,7 @@ export class ChatService {
     private readonly flags: FeatureFlagService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly presence: PresenceService,
   ) {}
 
   private ctx() {
@@ -76,15 +78,29 @@ export class ChatService {
     );
     const unread = new Map(unreadRows.map((r) => [r.id, r.n]));
 
+    // Decorate with derived presence: the stored column goes stale the moment
+    // someone closes their laptop.
+    const everyone = [...new Set(
+      memberships.flatMap((m) => (m.conversation as any).members.map((x: any) => x.userId)),
+    )] as string[];
+    const presence = await this.presence.viewFor(everyone);
+    const withPresence = (u: any) => ({
+      ...u,
+      presence: presence.get(u.id)?.presence ?? 'OFFLINE',
+      presenceReason: presence.get(u.id)?.reason ?? null,
+    });
+
     return memberships
       .map((m) => {
         const c = m.conversation as any;
-        const others = c.members.filter((x: any) => x.userId !== userId).map((x: any) => x.user);
+        const others = c.members
+          .filter((x: any) => x.userId !== userId)
+          .map((x: any) => withPresence(x.user));
         return {
           id: c.id,
           isGroup: c.isGroup,
           name: c.isGroup ? c.name : others[0]?.fullName ?? 'Direct message',
-          members: c.members.map((x: any) => x.user),
+          members: c.members.map((x: any) => withPresence(x.user)),
           others,
           lastMessage: c.messages[0] ?? null,
           unread: unread.get(c.id) ?? 0,

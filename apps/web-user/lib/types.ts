@@ -101,6 +101,8 @@ export interface RoomSchedule {
 
 export interface DirectoryUser {
   id: string; fullName: string; email: string; department: string | null;
+  presence?: Presence;
+  presenceReason?: PresenceView['reason'];
 }
 
 export interface Participant {
@@ -138,6 +140,17 @@ export interface ExternalTask {
   id: string; category: string; title: string; body: string | null;
   requesterName: string | null; sourcePlatform: string | null;
   decision: 'PENDING' | 'APPROVED' | 'REJECTED'; createdAt: string;
+}
+
+export type Presence = 'AVAILABLE' | 'BUSY' | 'DND' | 'AWAY' | 'OFFLINE';
+
+/** Derived status — see the API's PresenceService for why it is not the column. */
+export interface PresenceView {
+  presence: Presence;
+  /** True when the user pinned it themselves rather than it being derived. */
+  manual: boolean;
+  reason: 'meeting' | 'idle' | 'offline' | 'manual' | 'active' | null;
+  stored?: Presence;
 }
 
 export interface ChatPerson {

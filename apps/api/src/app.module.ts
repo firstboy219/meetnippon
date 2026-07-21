@@ -26,6 +26,7 @@ import { RecordingModule } from './recording/recording.module';
 import { ChatModule } from './chat/chat.module';
 import { MailModule } from './mail/mail.module';
 import { DirectoryModule } from './directory/directory.module';
+import { PresenceModule } from './presence/presence.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
@@ -61,6 +62,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     RecordingModule,
     ChatModule,
     DirectoryModule,
+    PresenceModule,
     UploadsModule,
     HealthModule,
   ],

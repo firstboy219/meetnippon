@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { PresenceService } from '../presence/presence.service';
 
 class DirectoryQueryDto {
   @IsOptional() @IsString() @MaxLength(120)
@@ -18,12 +19,15 @@ class DirectoryQueryDto {
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class DirectoryController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly presence: PresenceService,
+  ) {}
 
   @Get('directory')
-  directory(@Query() q: DirectoryQueryDto) {
+  async directory(@Query() q: DirectoryQueryDto) {
     const term = q.q?.trim();
-    return this.prisma.scoped.user.findMany({
+    const users = await this.prisma.scoped.user.findMany({
       where: {
         isActive: true,
         ...(term
@@ -39,5 +43,13 @@ export class DirectoryController {
       orderBy: { fullName: 'asc' },
       take: 50,
     });
+
+    // Derived, not the stored column — see PresenceService for why.
+    const view = await this.presence.viewFor(users.map((u) => u.id));
+    return users.map((u) => ({
+      ...u,
+      presence: view.get(u.id)?.presence ?? 'OFFLINE',
+      presenceReason: view.get(u.id)?.reason ?? null,
+    }));
   }
 }
