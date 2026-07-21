@@ -46,6 +46,47 @@
 | ADV-1 | Room schedule timeline + advanced chat with offline email | ✅ DONE (2026-07-21) |
 | PRES-1 | Presence: available / busy / DND / idle / offline + auto "in a meeting" | ✅ DONE (2026-07-21) |
 | PROF-1 | Self-service profile: name, picture, personal email, password | ✅ DONE (2026-07-21) |
+| BUG-1 | Fix: booking with participants rejected with 400 | ✅ FIXED (2026-07-21) |
+
+---
+
+## BUG-1 — "participants.0.property name should not exist" — FIXED (2026-07-21)
+
+Owner-reported, with screenshots: adding any participant to a booking failed with
+**400 `participants.0.property name should not exist`**. Reproduced exactly before fixing.
+
+**Cause.** The portal's `Participant` type carries a display-only `name` so chips can read
+"Bob Builder" instead of an email address. The whole object was posted, and `ParticipantDto` runs
+under `whitelist + forbidNonWhitelisted`, so the extra property is rejected.
+
+**This is the same class of defect as the resource-edit 400** (`property type should not exist`):
+a UI-shaped object sent straight to an API that validates strictly.
+
+**Fixed in the client, not by loosening the API.** Rejecting unknown properties is a deliberate
+guard — relaxing it to make a screen work would trade a real protection for a display convenience.
+`lib/participants.ts` now owns `toWire()`, the single place that converts the display shape to the
+wire shape, and all three call sites (book page, quick-book, edit dialog) use it. Keeping the
+conversion next to the type is what stops the two shapes drifting apart again.
+
+**Side effect worth having** — stored participants only carry `userId`/`email`, so editing an
+existing booking used to show bare addresses. The picker now resolves names back from the directory.
+
+**Verified live:** the original payload still returns **400** with the owner's exact message (the
+guard is intact); the payload the portal now sends returns **201** and stores
+`[{email, userId}, {email, external:true}]`; editing the guest list returns **200**.
+
+**Not a bug, found while verifying** — my script could not authenticate as `admin@nipsea.co.id`.
+The audit log shows a `profile.password_change` by that account at the moment the owner was testing
+the new profile page: they changed it themselves and the feature worked. Nothing was reset; the test
+was re-run under a different account.
+
+**Housekeeping** — removed 10 CANCELLED bookings left by my own smoke scripts (`QR check`,
+`Sync proof A/B`, `UX smoke meeting`, …) so they do not appear in History during the demo. Selected
+by explicit id and guarded to refuse any non-cancelled row: `Sync Product Roadmap Q3` (demo seed),
+`Testing System — Galuh` (a real imported row) and the owner's own `tesss` all matched a naive
+search and were deliberately preserved. 278 → 268.
+
+---
 
 ---
 

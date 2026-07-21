@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Booking, InviteResult, Participant } from '@/lib/types';
 import { getTenantTz, localDateKey, tzLabel, zonedToUtcIso } from '@/lib/format';
 import Participants from './Participants';
+import { toWire } from '@/lib/participants';
 
 /** Wall-clock HH:MM of an instant on the tenant's clock, for the time inputs. */
 function timeIn(iso: string): string {
@@ -45,7 +46,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: {
     e.preventDefault();
     setBusy(true);
     try {
-      const payload: Record<string, unknown> = { title, participants };
+      const payload: Record<string, unknown> = { title, participants: toWire(participants) };
       // Times are only sent when they actually changed — the API refuses a
       // half-specified pair, and an unchanged edit should not trip re-approval.
       if (moved) {

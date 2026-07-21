@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Booking, Participant } from '@/lib/types';
 import { getTenantTz, tzLabel, zonedToUtcIso } from '@/lib/format';
 import Participants from './Participants';
+import { toWire } from '@/lib/participants';
 
 const DURATIONS = [30, 60, 90, 120];
 
@@ -51,7 +52,7 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
         resourceId,
         startTime: zonedToUtcIso(day, from, getTenantTz()),
         endTime: zonedToUtcIso(day, to, getTenantTz()),
-        ...(participants.length ? { participants, notify: true } : {}),
+        ...(participants.length ? { participants: toWire(participants), notify: true } : {}),
       });
       push(res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed'), 'success');
       onBooked();

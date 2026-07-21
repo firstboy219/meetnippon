@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import type { Resource, Booking, Participant } from '@/lib/types';
 import { todayLocal, zonedToUtcIso, getTenantTz, tzLabel } from '@/lib/format';
 import Participants from '@/components/Participants';
+import { toWire } from '@/lib/participants';
 
 type Filter = 'ALL' | 'ROOM' | 'DESK';
 
@@ -140,7 +141,8 @@ function BookingModal({ resource, onClose, onBooked }: {
         resourceId: resource.id,
         startTime: zonedToUtcIso(date, start, getTenantTz()),
         endTime: zonedToUtcIso(date, end, getTenantTz()),
-        ...(participants.length ? { participants, notify } : {}),
+        // toWire strips display-only fields; the API rejects unknown properties.
+        ...(participants.length ? { participants: toWire(participants), notify } : {}),
       });
       const base = res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed');
       const n = participants.length && notify ? participants.length : 0;

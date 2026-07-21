@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
@@ -41,6 +41,17 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
   }, [open]);
 
   const chosen = useMemo(() => new Set(value.map((p) => p.email.toLowerCase())), [value]);
+
+  /**
+   * Participants stored on a booking only carry userId/email — `name` is a
+   * display field that never goes to the API. Look the name back up so editing
+   * an existing booking shows "Bob Builder", not a bare address.
+   */
+  const labelFor = useCallback((p: Participant) => {
+    if (p.name) return p.name;
+    const hit = dir.find((u) => u.id === p.userId || u.email.toLowerCase() === p.email.toLowerCase());
+    return hit?.fullName ?? p.email;
+  }, [dir]);
 
   const matches = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -86,7 +97,7 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
         <div className="chip-row">
           {value.map((p) => (
             <span key={p.email} className={`chip ${p.external ? 'chip-ext' : ''}`}>
-              {p.name || p.email}
+              {labelFor(p)}
               {p.external ? <em>{t('part.external')}</em> : null}
               <button type="button" onClick={() => remove(p.email)} aria-label={`${t('common.remove')} ${p.email}`}>×</button>
             </span>
