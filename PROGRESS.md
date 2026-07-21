@@ -45,6 +45,49 @@
 | DEMO-1 | Single-organisation mode: billing hidden, workspace pinned, limits raised | ✅ DONE (2026-07-21) |
 | ADV-1 | Room schedule timeline + advanced chat with offline email | ✅ DONE (2026-07-21) |
 | PRES-1 | Presence: available / busy / DND / idle / offline + auto "in a meeting" | ✅ DONE (2026-07-21) |
+| PROF-1 | Self-service profile: name, picture, personal email, password | ✅ DONE (2026-07-21) |
+
+---
+
+## PROF-1 — User profile — DONE (2026-07-21)
+
+**175/175 tests pass** (10 new). Migration `20260721064643_user_profile_fields` adds
+`User.personalEmail` and `User.avatarUrl`; applied additively (users 8→8, bookings 277→277).
+
+**`/profile`** — picture, full name, department, personal email, language, and password, at
+`me/profile`. Every route acts on the caller's own id, taken from the token; none accepts a user id
+from the request, so there is no object-reference to get wrong.
+
+**Password change is the security-sensitive part:**
+- **The current password is required**, even though the caller is already authenticated. A bearer
+  token may have been left on a shared machine, and changing the password is exactly what someone
+  with a borrowed session wants. Verified live: wrong current password → **400**, and the stored
+  hash is untouched.
+- Reusing the current password is rejected.
+- SSO accounts (no `passwordHash`) get a clear message rather than a confusing failure.
+- **An email goes to the work address** — the one under the workspace's control, not the personal
+  one — so an unauthorised change is visible to the real owner. Confirmed live:
+  `[mail:sent] "Your password was changed"`. Neither password appears in the message.
+- The hash is never in any response; asserted in the tests and checked live.
+
+**Personal email is contact-only.** It is *not* a login and *not* a password-recovery channel,
+because nothing verifies that the user owns it — treating an unverified address as a recovery route
+is a straightforward account-takeover path. It is also refused if it matches another account's login
+address, which would otherwise let one person's "personal" address shadow another's identity.
+The hint under the field says both things plainly.
+
+**Avatar upload** reuses the existing magic-byte-validated pipeline but on a **separate route**
+(`POST /uploads/avatar`, any signed-in user, 2 MB) rather than relaxing the admin route — so a future
+change to admin uploads cannot silently widen what employees may write. HTML-as-PNG is still refused
+(**400** live). Avatars appear in the topbar chip; the presence dot is layered over them rather than
+clipped by them.
+
+**Also in this change (owner request): the "Create a workspace" link is hidden on the login page.**
+Gated on the same pinned-workspace signal as the hidden workspace field rather than a new switch —
+a deployment serving one organisation offering to create another is self-contradictory. Verified:
+0 occurrences on the live login page.
+
+---
 
 ---
 

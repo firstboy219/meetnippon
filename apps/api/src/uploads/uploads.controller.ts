@@ -6,7 +6,9 @@ import type { Response } from 'express';
 import { createReadStream } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { MAX_UPLOAD_BYTES, UploadedFileLike, UploadsService } from './uploads.service';
+import {
+  MAX_AVATAR_BYTES, MAX_UPLOAD_BYTES, UploadedFileLike, UploadsService,
+} from './uploads.service';
 
 @Controller('uploads')
 export class UploadsController {
@@ -22,6 +24,22 @@ export class UploadsController {
   }))
   upload(@UploadedFile() file: UploadedFileLike) {
     return this.uploads.save(file);
+  }
+
+  /**
+   * Avatar upload, open to any signed-in user.
+   *
+   * Separate from the admin route rather than relaxing it: this one has its own
+   * tighter size cap, and keeping them apart means a future change to admin
+   * uploads cannot silently widen what employees may write.
+   */
+  @Post('avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: MAX_AVATAR_BYTES, files: 1 },
+  }))
+  avatar(@UploadedFile() file: UploadedFileLike) {
+    return this.uploads.save(file, MAX_AVATAR_BYTES);
   }
 
   /**

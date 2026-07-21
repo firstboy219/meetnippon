@@ -27,6 +27,8 @@ const SIGNATURES: { ext: string; mime: string; match: (b: Buffer) => boolean }[]
 ];
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+/** Avatars are small by nature; a lower cap for the route everyone can reach. */
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 /** Stored name: 32 hex chars + a known-good extension. Never the client's name. */
 const STORED_NAME = /^[a-f0-9]{32}\.(png|jpg|gif|webp)$/;
@@ -43,10 +45,10 @@ export class UploadsService {
     return id;
   }
 
-  async save(file: UploadedFileLike): Promise<{ url: string; bytes: number }> {
+  async save(file: UploadedFileLike, maxBytes = MAX_UPLOAD_BYTES): Promise<{ url: string; bytes: number }> {
     if (!file?.buffer?.length) throw new BadRequestException('No file received.');
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException('Image must be 5 MB or smaller.');
+    if (file.size > maxBytes) {
+      throw new BadRequestException(`Image must be ${Math.round(maxBytes / 1024 / 1024)} MB or smaller.`);
     }
 
     // The declared mimetype is client-supplied and proves nothing; the leading

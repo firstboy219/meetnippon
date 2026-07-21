@@ -135,9 +135,13 @@ export default function LoginPage() {
             <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => ssoSignIn('microsoft')}>Microsoft 365</button>
             <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => ssoSignIn('google')}>Google</button>
           </div>
-          <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--ink-soft)' }}>
-            New here? <a href="/signup" className="link">Create a workspace</a>
-          </div>
+          {/* A pinned workspace means this deployment serves one organisation,
+              so offering to create another is self-contradictory. */}
+          {FIXED_WORKSPACE ? null : (
+            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--ink-soft)' }}>
+              New here? <a href="/signup" className="link">Create a workspace</a>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -142,6 +142,19 @@ export interface ExternalTask {
   decision: 'PENDING' | 'APPROVED' | 'REJECTED'; createdAt: string;
 }
 
+export interface Profile {
+  id: string;
+  email: string;
+  /** Contact-only alternate address; never a login. */
+  personalEmail: string | null;
+  fullName: string;
+  avatarUrl: string | null;
+  role: UserRole;
+  department: string | null;
+  languagePref: 'EN' | 'ID';
+  createdAt: string;
+}
+
 export type Presence = 'AVAILABLE' | 'BUSY' | 'DND' | 'AWAY' | 'OFFLINE';
 
 /** Derived status — see the API's PresenceService for why it is not the column. */

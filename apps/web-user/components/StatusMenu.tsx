@@ -1,9 +1,10 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
-import type { PresenceView } from '@/lib/types';
+import type { PresenceView, Profile } from '@/lib/types';
 
 const CHOICES = ['AVAILABLE', 'BUSY', 'DND', 'AWAY', 'OFFLINE'] as const;
 const KEY: Record<string, string> = {
@@ -23,12 +24,25 @@ export default function StatusMenu() {
   const { t } = useI18n();
   const { user } = useAuth();
   const [state, setState] = useState<PresenceView | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const initials = (user?.fullName || '?')
+  const name = profile?.fullName ?? user?.fullName ?? '';
+  const initials = (name || '?')
     .split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+
+  // The profile page dispatches this after a save so the chip updates without
+  // a reload.
+  const loadProfile = useCallback(() => {
+    api.get<Profile>('/me/profile').then(setProfile).catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadProfile();
+    window.addEventListener('mn:profile', loadProfile);
+    return () => window.removeEventListener('mn:profile', loadProfile);
+  }, [loadProfile]);
 
   const beat = useCallback(() => {
     api.post<PresenceView>('/me/presence/heartbeat', {}).then(setState).catch(() => {});
@@ -77,11 +91,14 @@ export default function StatusMenu() {
       <button type="button" className="status-trigger" onClick={() => setOpen((o) => !o)}
         aria-expanded={open} aria-label={t('presence.change')}>
         <span className="avatar">
-          {initials}
+          {profile?.avatarUrl
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={profile.avatarUrl} alt="" className="avatar-img" />
+            : initials}
           <span className={`presence-dot ${KEY[current] ?? 'offline'}`} />
         </span>
         <span className="user-meta">
-          <span className="name">{user?.fullName}</span>
+          <span className="name">{name}</span>
           <span className="role">{label} <span className="status-sub">· {sub}</span></span>
         </span>
       </button>
@@ -102,6 +119,9 @@ export default function StatusMenu() {
             onClick={() => choose('AUTO')}>
             ↺ {t('presence.back_to_auto')}
           </button>
+          <Link href="/profile" className="status-menu-item profile-link" onClick={() => setOpen(false)}>
+            {t('nav.profile')}
+          </Link>
         </div>
       ) : null}
     </div>
