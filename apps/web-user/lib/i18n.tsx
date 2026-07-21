@@ -41,6 +41,7 @@ const DICT: Dict = {
   'login.email': { en: 'Email', id: 'Email' },
   'login.password': { en: 'Password', id: 'Kata sandi' },
   'login.workspace': { en: 'Workspace', id: 'Workspace' },
+  'login.workspace_unknown': { en: 'No workspace with that address — check the spelling.', id: 'Tidak ada workspace dengan alamat itu — periksa ejaannya.' },
   'login.submit': { en: 'Sign in', id: 'Masuk' },
   'login.tagline': { en: 'Meeting rooms & desks, booked in seconds.', id: 'Ruang meeting & desk, dipesan dalam hitungan detik.' },
   'dash.greeting': { en: 'Welcome back', id: 'Selamat datang kembali' },

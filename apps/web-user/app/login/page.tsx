@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { api, tokenStore } from '@/lib/api';
 
 export default function LoginPage() {
-  const { login, branding, user, ready } = useAuth();
+  const { login, branding, user, ready, previewWorkspace } = useAuth();
   const { t } = useI18n();
   const router = useRouter();
 
@@ -15,8 +15,32 @@ export default function LoginPage() {
   const [workspace, setWorkspace] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [unknownWorkspace, setUnknownWorkspace] = useState(false);
 
   useEffect(() => { if (ready && user) router.replace('/dashboard'); }, [ready, user, router]);
+
+  // Prefill from whatever this browser used last, so a returning user sees
+  // their own workspace already selected and themed.
+  useEffect(() => {
+    const last = localStorage.getItem('mn_workspace');
+    if (last) setWorkspace(last);
+  }, []);
+
+  /**
+   * Theme the screen for the workspace being typed. Debounced, because this
+   * fires on every keystroke and a slug is only meaningful once it is complete
+   * enough to match — anything shorter is left alone rather than flashing the
+   * default palette back and forth.
+   */
+  useEffect(() => {
+    const slug = workspace.trim().toLowerCase();
+    if (slug.length < 3) { setUnknownWorkspace(false); return; }
+    const id = setTimeout(async () => {
+      const found = await previewWorkspace(slug);
+      setUnknownWorkspace(!found);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [workspace, previewWorkspace]);
 
   const needsWorkspace = !branding || branding.accessMode === 'SHARED_URL';
   const tenantName = branding?.displayName || branding?.tenantName || 'MeetNippon';
@@ -74,7 +98,10 @@ export default function LoginPage() {
             <div className="f-group">
               <label className="f-label">{t('login.workspace')}</label>
               <input className="f-input" value={workspace} onChange={(e) => setWorkspace(e.target.value)}
-                placeholder="nipsea" autoCapitalize="none" required />
+                placeholder="nipsea" autoCapitalize="none" autoCorrect="off" spellCheck={false} required />
+              {unknownWorkspace ? (
+                <div className="f-hint">{t('login.workspace_unknown')}</div>
+              ) : null}
             </div>
           ) : null}
           <div className="f-group">

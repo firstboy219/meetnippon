@@ -75,10 +75,33 @@ purple/amber in admin is visible on the very next portal request; `--on-brand` i
 shipped bundle. Hex parsing rejects junk (`red`, `#12`, `javascript:alert(1)`) so a malformed value
 leaves the defaults rather than writing garbage into the DOM.
 
-**Known limitation, by design** — on a shared URL the **login screen** still cannot be themed: before
-sign-in there is genuinely nothing identifying the workspace. Per-tenant login branding needs the
-wildcard-DNS subdomain mode (owner-gated). The admin console is likewise unthemed — it is the
-platform's own tool; branding it per tenant was not requested and is a separate decision.
+**Follow-up (owner correction): branding follows the workspace typed at login.** The limitation
+above was wrong — the login screen *does* know which workspace it is for, because the user types the
+slug. `GET /tenant/branding?workspace=<slug>` now resolves branding by slug, unauthenticated, and
+the login page applies it as you type (400 ms debounce, only once the slug is ≥3 chars so the
+palette does not flicker). The slug is remembered in `localStorage`, so a returning user lands on an
+already-branded login screen and the field is prefilled. An unrecognised slug shows a quiet hint
+rather than silently doing nothing.
+
+Resolution order is now: **`?workspace=` → Host header → the caller's own tenant.**
+
+**Why the slug lookup is safe to leave unauthenticated:** a login page must be able to theme itself
+for a workspace nobody has proven membership of yet. It returns only what a login screen renders —
+name, colours, logo, access mode — and nothing about members. Guessing slugs therefore reveals no
+more than attempting a sign-in already does, and the global throttle applies. The slug is validated
+against the registration character set before it reaches the database. Verified live that
+`nipsea'--`, `../../etc/passwd`, `a or 1=1`, `%00` and a 2-character slug all return
+`{"tenant":null}`, while `"  NiPsEa  "` resolves (users type sloppily), and that the response
+carries no membership or PII fields.
+
+**Still limited** — the admin console remains unthemed; it is the platform's own tool and branding it
+per tenant is a separate decision.
+
+**Process note — I clobbered a live setting.** My verification script changed the brand colour to
+test propagation and then "restored" it to a value captured earlier in the session. The owner had
+changed it to `#429eff` in the meantime, so the restore wrote back a stale `#0276f2`. Caught it in
+the probe output and put `#429eff` back. **A test that mutates production must capture the current
+value immediately before overwriting it, not reuse one from earlier in the run.**
 
 ---
 

@@ -5,17 +5,22 @@ import { setTenantTz } from './format';
 import { applyBrandTheme } from './theme';
 import type { AuthUser, Branding } from './types';
 
+/** Remembered so a returning user sees their own workspace, already themed. */
+const LAST_WORKSPACE = 'mn_workspace';
+
 interface AuthCtx {
   user: AuthUser | null;
   branding: Branding | null;
   ready: boolean;
   login: (email: string, password: string, tenantSlug?: string) => Promise<void>;
   logout: () => void;
+  /** Theme the page for a workspace slug typed on the login screen. */
+  previewWorkspace: (slug: string) => Promise<boolean>;
 }
 
 const Ctx = createContext<AuthCtx>({
   user: null, branding: null, ready: false,
-  login: async () => {}, logout: () => {},
+  login: async () => {}, logout: () => {}, previewWorkspace: async () => false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -24,25 +29,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   /**
-   * Sent authenticated when we have a token: on a shared-URL host the Host
-   * header carries no tenant, so an anonymous request cannot be themed at all.
+   * Resolve and apply a workspace's branding.
+   *
+   * `workspace` is the slug typed on the login screen — on a shared-URL host it
+   * is the only thing identifying the tenant before sign-in. Once a token
+   * exists the request is sent authenticated instead, so the session's own
+   * workspace wins.
    */
-  const loadBranding = useCallback(async () => {
+  const loadBranding = useCallback(async (workspace?: string) => {
+    const path = workspace
+      ? `/tenant/branding?workspace=${encodeURIComponent(workspace)}`
+      : '/tenant/branding';
     try {
-      const b = tokenStore.access
-        ? await api.get<Branding | { tenant: null }>('/tenant/branding')
-        : await api.publicGet<Branding | { tenant: null }>('/tenant/branding');
+      const b = tokenStore.access && !workspace
+        ? await api.get<Branding | { tenant: null }>(path)
+        : await api.publicGet<Branding | { tenant: null }>(path);
       if (b && 'tenantId' in b) {
         setTenantTz(b.timezone);
         setBranding(b);
         applyBrandTheme(b);
+        return true;
       }
     } catch { /* branding is best-effort — never block the app on it */ }
+    return false;
   }, []);
 
   useEffect(() => {
     (async () => {
-      await loadBranding();
+      // Signed in: the session's tenant decides. Signed out: fall back to the
+      // workspace this browser last used, so the login screen is already in the
+      // right colours before anything is typed.
+      const remembered = tokenStore.access ? undefined : (localStorage.getItem(LAST_WORKSPACE) ?? undefined);
+      await loadBranding(remembered);
       if (tokenStore.access) {
         try {
           const me = await api.get<AuthUser>('/auth/me');
@@ -60,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       '/auth/login', { email, password, ...(tenantSlug ? { tenantSlug } : {}) }, false,
     );
     tokenStore.set(res.accessToken, res.refreshToken);
+    if (tenantSlug) localStorage.setItem(LAST_WORKSPACE, tenantSlug.trim().toLowerCase());
     // /auth/me carries the tenant clock; without it the session would render
     // in UTC until the next full page load.
     try {
@@ -80,8 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/login';
   }, []);
 
+  const previewWorkspace = useCallback(
+    (slug: string) => loadBranding(slug.trim().toLowerCase()),
+    [loadBranding],
+  );
+
   return (
-    <Ctx.Provider value={{ user, branding, ready, login, logout }}>
+    <Ctx.Provider value={{ user, branding, ready, login, logout, previewWorkspace }}>
       {children}
     </Ctx.Provider>
   );
