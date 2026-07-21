@@ -41,6 +41,47 @@
 | PAGE-1 | Pagination + filters for admin audit / users / bookings | ✅ DONE (2026-07-21) |
 | BRAND-1 | Branding actually reaches the user portal | ✅ DONE (2026-07-21) |
 | QR-1 | Room QR codes + door-schedule page; resource-edit 400 fixed | ✅ DONE (2026-07-21) |
+| DATA-1 | PT NPC master data: 10 rooms + 255 active bookings imported | ✅ DONE (2026-07-21) |
+
+---
+
+## DATA-1 — PT NPC master data import — DONE (2026-07-21)
+
+Source: `KnowledgeBase/PT NPC - BOOKING MEETING ROOM.xlsx`, 12 sheets (10 rooms +
+`Template`/`Sheet1`), columns `No | Name | Division | Meeting Room | Date | Time | Remarks`.
+Parsed with a **stdlib-only** reader (`scripts/import/xlsx_analyze.py`) — an xlsx is a zip of XML, and
+`pip install` on a box running other people's projects is not something to do casually.
+
+**Rooms** — all 10 sheet names created as ROOM resources, capacity 8, category "Meeting Room".
+Idempotent by name: `Solareflect` and `Superlac` already existed (owner-created) and were left
+untouched, including their capacity of 1.
+
+**Bookings** — 2,288 rows in the file; **2,033 already in the past**, so only the **255 still upcoming**
+were imported, per the owner's instruction. Range 2026-07-21 .. 2026-12-28, 44 distinct people.
+Backup taken first: `backups/booking-before-npc-import-20260721-043117.sql`. Count went 22 → 277.
+
+**Owner decisions taken (asked, not assumed):**
+- *Ownership* — every imported booking belongs to the **admin account**, with the real person and
+  division in the title (`Mini SNOP — Octy (MRP)`) and the source recorded in the description.
+  The alternative was 44 placeholder identities; the owner chose not to create them.
+- *`FULL DAY`* (104 rows) → **08:00–16:30 WIB**. Open-ended rows (`… - SELESAI`) end at 16:30 too.
+
+**Written as direct SQL, not API calls, on purpose.** The booking rules cap duration at 4h and
+advance booking at 60 days; most of these legitimate rows would have been rejected. A migration is
+not a user action. Two things were deliberately *not* bypassed: overlaps are detected and reported,
+and nothing is sent — the importer writes rows, so it cannot email anyone by construction.
+
+**Data quality found in the source** (reported, imported as-is — the sheet is the record):
+- 2 genuine overlaps, both Superlac 2026-07-24: a FULL DAY booking by Mr. Tay plus two others.
+- 1 malformed time `13.00 - 1500` → treated as 13:00–16:30.
+- 108 distinct division spellings that are really ~45 (`Marketing`/`MARKETING`/`Mkt`/`MKT`,
+  `Purchasing`/`purchasing`/`PURCHASING`/`Purchaing`, `Operation`/`Operations`/`Ops`). Left alone —
+  divisions are only free text on the booking title today.
+
+**Still open** — 44 staff accounts (the file has first names only, no emails) and the 2,033 historical
+rows. Both wait on the owner.
+
+---
 
 ---
 
