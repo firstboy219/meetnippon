@@ -47,6 +47,52 @@
 | PRES-1 | Presence: available / busy / DND / idle / offline + auto "in a meeting" | ✅ DONE (2026-07-21) |
 | PROF-1 | Self-service profile: name, picture, personal email, password | ✅ DONE (2026-07-21) |
 | BUG-1 | Fix: booking with participants rejected with 400 | ✅ FIXED (2026-07-21) |
+| QR-2 | Public room page from the door QR; booking still requires sign-in | ✅ DONE (2026-07-21) |
+
+---
+
+## QR-2 — Public room page — DONE (2026-07-21)
+
+Owner asked for the QR landing page to be openable without signing in, while booking still requires
+a login. **175/175 tests pass.**
+
+**This reverses the QR-1 decision to keep the page authenticated, so the privacy problem it was
+solving had to be solved differently.** A page that is public *and* lists who booked what would let
+anyone standing near a door — a visitor, a courier, a candidate waiting in reception — read that
+Finance is meeting the auditors at 14:00. So the page is public but **the audience decides the
+detail**:
+
+| Viewer | Sees |
+|---|---|
+| Anonymous | Room, floor, capacity, facilities, free/in-use, "busy 09:00–10:00" |
+| Signed-in colleague | All of the above **plus** meeting titles and who booked each slot |
+
+**`GET /api/public/rooms/:id/schedule`** is a deliberately narrow unauthenticated surface in its own
+module. It selects `{id, startTime, endTime}` from bookings — the title, organiser and participants
+are never loaded, so they cannot leak through a mistake later. Verified live by probing the response
+for `title`, `principal`, `fullName`, `department`, `participants`, `email`, `bookerId`,
+`principalId` and for the actual names of real staff: **none present**. The same room fetched with a
+token does return them.
+
+**Page moved out of the `(app)` group** so it renders standalone — no sidebar, comfortable on a
+phone held at a doorway. It fetches the public view always (which also carries the room's timezone,
+needed before anything renders) and additionally fetches the rich view when a token exists. An
+**expired** token falls back to the public view rather than erroring.
+
+**Booking still requires identity.** The button reads "Sign in to book this room" and sends the user
+to `/login?next=/room/<id>`, returning them to the room afterwards. `next` is accepted **only** if it
+is a same-origin path starting with a single `/` — otherwise the login screen becomes an open
+redirect. `POST /api/bookings` without a token is still **401**.
+
+**Access model** — the room id in the sticker is a cuid, so the URL is effectively unguessable but
+shareable, the same bargain as the upload URLs. That is acceptable precisely because nothing
+sensitive sits behind it. Unknown and hostile ids (`../../etc/passwd`, `' OR 1=1`) all return 404.
+
+**Build gotcha** — `useSearchParams()` on `/login` broke the production build:
+`Error occurred prerendering page "/login"`. Next 14 requires it inside a Suspense boundary or the
+route opts out of static generation. The form is now a child component wrapped in `<Suspense>`.
+
+---
 
 ---
 

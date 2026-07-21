@@ -462,6 +462,13 @@ tr:last-child td { border-bottom: none; }
   .sched-day { min-width: 120px; font-size: 13.5px; }
 }
 
+/* ---------- Public room page (what the door QR opens) ---------- */
+/* Standalone: no sidebar, comfortable on a phone held at a doorway. */
+.room-public { max-width: 660px; margin: 0 auto; padding: 20px 16px 48px;
+  display: flex; flex-direction: column; gap: 16px; }
+.room-public-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.room-public-ws { font-family: 'Space Grotesk'; font-weight: 700; font-size: 14px; color: var(--teal-dark); }
+
 /* ---------- Room page (QR landing) ---------- */
 .room-page { display: flex; flex-direction: column; gap: 18px; }
 .room-status { display: flex; align-items: center; justify-content: space-between; gap: 18px;

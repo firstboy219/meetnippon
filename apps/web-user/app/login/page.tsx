@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { api, tokenStore } from '@/lib/api';
@@ -12,10 +12,23 @@ import { api, tokenStore } from '@/lib/api';
  */
 const FIXED_WORKSPACE = process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE || '';
 
+/**
+ * `useSearchParams` opts a route out of static prerendering unless it sits
+ * inside a Suspense boundary, so the form lives in its own component.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="empty">…</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const { login, branding, user, ready, previewWorkspace } = useAuth();
   const { t } = useI18n();
   const router = useRouter();
+  const params = useSearchParams();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +37,16 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [unknownWorkspace, setUnknownWorkspace] = useState(false);
 
-  useEffect(() => { if (ready && user) router.replace('/dashboard'); }, [ready, user, router]);
+  /**
+   * Where to land after signing in. Only same-origin paths are honoured — an
+   * absolute URL here would turn the login screen into an open redirect.
+   */
+  const next = (() => {
+    const raw = params.get('next') ?? '';
+    return raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard';
+  })();
+
+  useEffect(() => { if (ready && user) router.replace(next); }, [ready, user, router, next]);
 
   // Prefill from whatever this browser used last, so a returning user sees
   // their own workspace already selected and themed. A fixed workspace wins.
@@ -61,7 +83,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(email, password, workspaceToSend);
-      router.replace('/dashboard');
+      router.replace(next);
     } catch (e: any) {
       setErr(e?.message || 'Sign in failed.');
     } finally {

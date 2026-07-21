@@ -236,6 +236,11 @@ const DICT: Dict = {
   'room.empty': { en: 'No bookings on this day.', id: 'Tidak ada booking di hari ini.' },
   'room.someone': { en: 'A colleague', id: 'Seorang rekan' },
   'room.book_this': { en: 'Book a room', id: 'Pesan ruang' },
+  'room.reserved': { en: 'Reserved', id: 'Sudah dipesan' },
+  'room.signin_to_book': { en: 'Sign in to book this room', id: 'Masuk untuk memesan ruang ini' },
+  'room.signin_for_detail': { en: 'Sign in to see who booked each slot and to make a booking.', id: 'Masuk untuk melihat siapa yang memesan tiap slot dan untuk membuat booking.' },
+  'room.open_portal': { en: 'Open portal', id: 'Buka portal' },
+  'room.not_found': { en: 'This room could not be found.', id: 'Ruangan ini tidak ditemukan.' },
   'room.people': { en: 'people', id: 'orang' },
   'room.seat': { en: 'seat', id: 'kursi' },
 

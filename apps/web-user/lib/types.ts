@@ -56,6 +56,26 @@ export interface Resource {
   policy?: PublicPolicy;
 }
 
+/**
+ * What the public (unauthenticated) room page receives.
+ * Occupied stretches carry no title and no organiser — by design.
+ */
+export interface PublicRoom {
+  room: {
+    id: string; name: string; type: 'ROOM' | 'DESK'; capacity: number;
+    status: string; facilities: string[];
+    floor?: { name: string; building?: { name: string } | null } | null;
+  };
+  workspace: string;
+  timezone: string;
+  day: string;
+  isToday: boolean;
+  busyNow: boolean;
+  busyUntil: string | null;
+  nextFrom: string | null;
+  busy: { id: string; startTime: string; endTime: string }[];
+}
+
 /** Every room's day, for the schedule timeline. */
 export interface DayGrid {
   day: string;
