@@ -7,6 +7,7 @@ import { useToast } from '@/lib/toast';
 import type { AdminUser, Page, UserRole } from '@/lib/types';
 import { ConfirmModal, Modal } from '@/components/Modal';
 import Pager from '@/components/Pager';
+import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
 
 const FORM_ID = 'user-form';
 const ROLES: UserRole[] = ['EMPLOYEE', 'APPROVER', 'ADMIN'];
@@ -69,7 +70,13 @@ export default function UsersPage() {
     finally { setBusy(false); }
   }
 
-  if (loading && !data) return <div className="empty">{t('common.loading')}</div>;
+  if (loading && !data) {
+    return (
+      <div className="card">
+        <LoadingRegion label={t('common.loading')}><SkeletonRows rows={6} /></LoadingRegion>
+      </div>
+    );
+  }
   if (err) {
     return (
       <div className="err-box err-row">

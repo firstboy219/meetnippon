@@ -194,7 +194,40 @@ tr:last-child td { border-bottom: none; }
   .stat-row { grid-template-columns: repeat(2, 1fr); }
   .notif-menu { width: 288px; }
 }
+/* ---------- Accessibility ---------- */
+/* Mirrors the user portal. The console styles its own controls, so the
+   browser's default outline is often invisible against them; :focus-visible
+   gives keyboard users a ring without affecting mouse users. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.sidebar :where(a, button):focus-visible { outline-color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* ---------- Loading skeletons ---------- */
+.sk { background: linear-gradient(90deg, #EFEEE9 25%, #F7F6F2 37%, #EFEEE9 63%);
+  background-size: 400% 100%; animation: sk 1.3s ease infinite; border-radius: 8px; }
+@keyframes sk { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+.sk-row { height: 46px; margin-bottom: 8px; }
+.sk-line { height: 12px; margin-bottom: 8px; }
+.sk-line.short { width: 42%; }
+.sk-stack { padding: 4px 0; }
+
 .empty { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 40px 0; }
+.empty-action { margin-top: 14px; }
 .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .mono { font-family: var(--font-display), monospace; font-size: 12px; }

@@ -1065,6 +1065,38 @@ Evidence in `../KnowledgeBase/SERVER_AUDIT.md`. QC gate:
 - [x] Free ports chosen & double-verified (reserved block **8081–8085**)
 - [x] DNS A-record `meetnippon.cosger.online` → 13.212.182.48 resolves ✓
 
+### UX-3 — admin a11y parity, nav grouping (2026-07-22)
+
+- **Admin portal had none of the accessibility work.** The audit read
+  `web-admin  focus-visible:0  reduced-motion:0  sr-only:0  skeleton:0` against
+  `web-user  6/1/1/1`. Ported the focus-visible rings (white on the dark
+  sidebar), `prefers-reduced-motion`, `.sr-only`, and skeleton styles; added
+  `apps/web-admin/components/Skeleton.tsx` and applied `LoadingRegion` +
+  `SkeletonRows` to the users and audit tables, which were rendering a bare
+  "Loading…". Now `3/1/1/1` — the count is lower only because the console has
+  fewer custom focusable widgets, not because anything is missing.
+- **User sidebar regrouped.** Ten flat items had outgrown a single scan. Now
+  Dashboard alone, then *Find & book* (book / floor plan / room schedule),
+  *My schedule* (my bookings / calendar / history), *Team* (approvals / hub /
+  chat). Collapsed, headings are replaced by a hairline rule; on mobile the
+  drawer is full width so the headings come back. A group whose items are all
+  feature-gated off renders nothing, heading included. Added `aria-current="page"`.
+
+**Layout-shift item closed as WONTFIX, deliberately.** The audit flagged 7
+`<img>` without dimensions. Six are already fixed-size via CSS (`.brand-mark`
+34px, `.avatar` 34px, `.avatar-lg` 88px) — the grep is textual and cannot see
+that. The seventh is the floor plan, and it must stay `height: auto`: room pins
+are positioned as percentages of that box, so pinning it to a fixed
+`aspect-ratio` would letterbox the image inside the box and offset every pin
+from the room it marks. I shipped that change, caught it reading the pin
+code, and reverted it before it reached the demo. The same reasoning applies to
+the admin `.plan-canvas`, where pin coordinates are read off
+`imgRef.getBoundingClientRect()`. Comment left in `globals.css` so the next
+person doesn't "fix" it again. Correct pins beat a smoother load.
+
+Gate: 189/189, both portals build, bookings 267/267 unchanged. API container
+untouched this round (portal-only change), so the reminder dispatcher stayed up.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

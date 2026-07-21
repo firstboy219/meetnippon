@@ -21,21 +21,41 @@ const ICONS: Record<string, React.ReactNode> = {
 /**
  * `flag` names the tenant feature that must be on for the item to appear.
  * Items without one are core booking features and are always shown.
+ *
+ * Grouped by what the user came to do rather than by module: ten flat entries
+ * had become more than the eye scans in one pass. A group with a null `key`
+ * renders without a heading — Dashboard stands alone above the rest.
  */
-const ITEMS: { href: string; key: string; flag?: string }[] = [
-  { href: '/dashboard', key: 'nav.dashboard' },
-  { href: '/book', key: 'nav.book' },
-  { href: '/bookings', key: 'nav.bookings' },
-  { href: '/denah', key: 'nav.denah' },
-  { href: '/schedule', key: 'nav.schedule' },
-  { href: '/calendar', key: 'nav.calendar' },
-  { href: '/history', key: 'nav.history' },
-  { href: '/approvals', key: 'nav.approval' },
-  { href: '/hub', key: 'nav.hub' },
-  // 'chat' is the only module with a real flag today and the only one the API
-  // refuses when off. Do not gate an item on a key that does not exist — the
-  // item would simply never appear.
-  { href: '/chat', key: 'nav.chat', flag: 'chat' },
+type NavItem = { href: string; key: string; flag?: string };
+const GROUPS: { key: string | null; items: NavItem[] }[] = [
+  { key: null, items: [{ href: '/dashboard', key: 'nav.dashboard' }] },
+  {
+    key: 'nav.group.book',
+    items: [
+      { href: '/book', key: 'nav.book' },
+      { href: '/denah', key: 'nav.denah' },
+      { href: '/schedule', key: 'nav.schedule' },
+    ],
+  },
+  {
+    key: 'nav.group.mine',
+    items: [
+      { href: '/bookings', key: 'nav.bookings' },
+      { href: '/calendar', key: 'nav.calendar' },
+      { href: '/history', key: 'nav.history' },
+    ],
+  },
+  {
+    key: 'nav.group.team',
+    items: [
+      { href: '/approvals', key: 'nav.approval' },
+      { href: '/hub', key: 'nav.hub' },
+      // 'chat' is the only module with a real flag today and the only one the API
+      // refuses when off. Do not gate an item on a key that does not exist — the
+      // item would simply never appear.
+      { href: '/chat', key: 'nav.chat', flag: 'chat' },
+    ],
+  },
 ];
 
 export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCloseMobile }: {
@@ -71,20 +91,30 @@ export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCl
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 4l6 8-6 8M6 4l6 8-6 8" /></svg>
       </button>
       <nav className="side">
-        {ITEMS.filter((it) => !it.flag || features.includes(it.flag)).map((it) => {
-          const active = path === it.href || path.startsWith(it.href + '/');
+        {GROUPS.map((g) => {
+          const items = g.items.filter((it) => !it.flag || features.includes(it.flag));
+          // A group whose every item is gated off must not leave a stray heading.
+          if (items.length === 0) return null;
           return (
-            <Link key={it.href} href={it.href} className={`nav-item ${active ? 'active' : ''}`}
-              title={t(it.key)} onClick={onCloseMobile}>
-              {ICONS[it.href]}
-              <span className="nav-label">{t(it.key)}</span>
-              {it.href === '/approvals' && pendingCount > 0 ? (
-                <span className="nav-badge">{pendingCount}</span>
-              ) : null}
-              {it.href === '/chat' && chatUnread > 0 ? (
-                <span className="nav-badge">{chatUnread > 99 ? '99+' : chatUnread}</span>
-              ) : null}
-            </Link>
+            <div className="nav-group" key={g.key ?? 'main'}>
+              {g.key ? <div className="nav-group-label">{t(g.key)}</div> : null}
+              {items.map((it) => {
+                const active = path === it.href || path.startsWith(it.href + '/');
+                return (
+                  <Link key={it.href} href={it.href} className={`nav-item ${active ? 'active' : ''}`}
+                    title={t(it.key)} aria-current={active ? 'page' : undefined} onClick={onCloseMobile}>
+                    {ICONS[it.href]}
+                    <span className="nav-label">{t(it.key)}</span>
+                    {it.href === '/approvals' && pendingCount > 0 ? (
+                      <span className="nav-badge">{pendingCount}</span>
+                    ) : null}
+                    {it.href === '/chat' && chatUnread > 0 ? (
+                      <span className="nav-badge">{chatUnread > 99 ? '99+' : chatUnread}</span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>

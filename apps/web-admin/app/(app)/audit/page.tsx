@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import type { AuditRow, Page } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
 import Pager from '@/components/Pager';
+import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
 
 /** Coarse groupings so an admin can narrow down without knowing action strings. */
 const ACTION_GROUPS = ['booking.', 'user.', 'mail.', 'office.', 'building.', 'floor.', 'resource.', 'tenant.'];
@@ -70,7 +71,9 @@ export default function AuditPage() {
         </div>
       ) : (
         <div className="card">
-          {loading && !data ? <div className="empty">{t('common.loading')}</div> : (
+          {loading && !data ? (
+            <LoadingRegion label={t('common.loading')}><SkeletonRows rows={8} /></LoadingRegion>
+          ) : (
             <>
               <div className="table-wrap">
                 <table>
