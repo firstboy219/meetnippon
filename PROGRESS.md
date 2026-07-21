@@ -43,6 +43,60 @@
 | QR-1 | Room QR codes + door-schedule page; resource-edit 400 fixed | ✅ DONE (2026-07-21) |
 | DATA-1 | PT NPC master data: 10 rooms + 255 active bookings imported | ✅ DONE (2026-07-21) |
 | DEMO-1 | Single-organisation mode: billing hidden, workspace pinned, limits raised | ✅ DONE (2026-07-21) |
+| ADV-1 | Room schedule timeline + advanced chat with offline email | ✅ DONE (2026-07-21) |
+
+---
+
+## ADV-1 — Room schedule & advanced chat — DONE (2026-07-21)
+
+**152/152 tests pass** (11 new).
+
+### Room schedule (the named gap: "user can't see a calendar per room")
+- `GET /resources/schedule?day=&type=` — every room's day in **two queries**, not one per room.
+- **`/schedule`**: a day timeline with rooms as rows and bookings as blocks, a live "now" line,
+  room search, ROOM/DESK/ALL filter, day stepper. **Click any empty stretch of a row to book that
+  room at that time** — the slot snaps to 30 minutes and opens a quick-book dialog that only asks
+  for what is missing (title, duration, guests). Clicking your own booking edits it; clicking
+  someone else's shows who has it.
+- The month calendar gained a **room filter**, which is the literal thing that was missing.
+- Positions are computed from the tenant's own midnight, so grid lines and blocks agree regardless
+  of the viewer's locale.
+
+### Chat
+- `ChatMember.lastReadAt` → **real unread counts** per thread and a total for the nav badge
+  (`GET /chat/unread`, polled independently of navigation). Opening a thread marks it read
+  optimistically so the badge does not linger for a poll cycle.
+- **People picker** backed by the directory — closes the member-picker gap deferred since Phase 6.
+  One person selected is a DM, two or more becomes a group; no separate mode to get wrong.
+- Presence dots on avatars, day separators, sender-name runs collapsed, mute per thread,
+  conversation search, and IME-safe Enter (never sends mid-composition, which would eat candidate
+  selection for anyone typing a non-Latin script).
+- Auto-scroll only when already near the bottom — otherwise reading history yanks you away.
+
+### Offline email
+When a recipient is away (presence OFFLINE, or no heartbeat for 5 minutes) they get an email that a
+message is waiting. **The message body is included as a short preview but the thread is not** — an
+email is a poor place for chat content and may be read on a device the workspace does not control.
+Muted threads never email.
+
+**Race found and fixed by testing, not review.** The debounce first read `lastNotifiedAt` and then
+wrote it. Sent politely one at a time it produced 1 email per burst; fired back-to-back it produced
+**2**, because two requests both saw "no recent nudge" before either wrote. Replaced with a
+conditional `updateMany` so exactly one caller claims the nudge. Verified live: 8 messages sent
+**sequentially** → 1 email, 8 sent **in parallel** → 1 email. The unit test now fires its burst with
+`Promise.all` rather than awaiting each, so the polite ordering cannot hide a regression.
+
+**Also fixed here — a test that passed for the wrong reason.** `mail.spec` asserted that an empty
+recipient is refused, and it *was* returning false — but only because a DNS lookup for
+`smtp.example.com` failed. A single `''` recipient is a one-element array and was never filtered, so
+it reached the transport. Recipients are now normalised and filtered whatever their shape, and the
+test runs against a **disabled** service so it can only pass for the right reason.
+
+**Corrected assumption** — the `Presence` enum is `AVAILABLE | BUSY | DND | AWAY | OFFLINE`. I had
+written `ONLINE`, which Prisma rejected at run time; the UI labels and status dots now match the
+schema.
+
+---
 
 ---
 

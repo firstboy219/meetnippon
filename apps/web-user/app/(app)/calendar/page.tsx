@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
-import type { Booking } from '@/lib/types';
+import type { Booking, Resource } from '@/lib/types';
 import {
   fmtTime, fmtDayLong, fmtMonthYear, localDateKey,
   todayLocal, tzLabel, weekdayLabels, zonedToUtcIso,
@@ -58,6 +58,12 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(() => initial.slice(0, 7));
   const [selected, setSelected] = useState(initial);
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [rooms, setRooms] = useState<Resource[]>([]);
+  const [roomFilter, setRoomFilter] = useState('');
+
+  useEffect(() => {
+    api.get<Resource[]>('/resources').then(setRooms).catch(() => setRooms([]));
+  }, []);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
@@ -82,13 +88,16 @@ export default function CalendarPage() {
     const map = new Map<string, Booking[]>();
     for (const b of bookings) {
       if (b.status === 'CANCELLED' || b.status === 'REJECTED') continue;
+      // Room filter: an online booking has no resource, so it only shows under
+      // "all rooms".
+      if (roomFilter && b.resourceId !== roomFilter) continue;
       const key = localDateKey(b.startTime);
       const list = map.get(key);
       if (list) list.push(b); else map.set(key, [b]);
     }
     for (const list of map.values()) list.sort((a, z) => a.startTime.localeCompare(z.startTime));
     return map;
-  }, [bookings]);
+  }, [bookings, roomFilter]);
 
   const selectedList = byDay.get(selected) ?? [];
 
@@ -113,6 +122,11 @@ export default function CalendarPage() {
             <button type="button" className="cal-step" onClick={() => step(1)} aria-label={t('cal.next')}>›</button>
           </div>
           <div className="cal-head-right">
+            <select className="filter-pill" value={roomFilter} aria-label={t('cal.room_filter')}
+              onChange={(e) => setRoomFilter(e.target.value)}>
+              <option value="">{t('cal.all_rooms')}</option>
+              {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
             <span className="cal-tz">{tzLabel()}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={goToday}>{t('cal.today')}</button>
           </div>

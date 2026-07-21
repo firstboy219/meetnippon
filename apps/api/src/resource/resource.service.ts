@@ -105,6 +105,61 @@ export class ResourceService {
   }
 
   /**
+   * Every room's day in one shot, for the schedule timeline.
+   *
+   * One query for the resources and one for the bookings, rather than a
+   * per-room round trip — this is the view users leave open, so it has to stay
+   * cheap as the room list grows.
+   */
+  async dayGrid(day?: string, type?: 'ROOM' | 'DESK') {
+    const tz = await tenantTimezone(this.prisma);
+    const base = day && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? new Date(`${day}T12:00:00.000Z`)
+      : new Date();
+    const dayStart = startOfDayInTz(base, tz);
+    const dayEnd = addLocalDays(dayStart, 1, tz);
+
+    const resources = await this.listRaw({ ...(type ? { type } : {}) });
+    const bookings = await this.prisma.scoped.booking.findMany({
+      where: {
+        resourceId: { in: resources.map((r) => r.id) },
+        status: { in: ['PENDING', 'APPROVED', 'WAITLIST'] },
+        startTime: { lt: dayEnd },
+        endTime: { gt: dayStart },
+      },
+      orderBy: { startTime: 'asc' },
+      select: {
+        id: true, title: true, startTime: true, endTime: true, status: true,
+        resourceId: true, principalId: true, bookerId: true,
+        principal: { select: { fullName: true, department: true } },
+      },
+    });
+
+    const byResource = new Map<string, typeof bookings>();
+    for (const b of bookings) {
+      const list = byResource.get(b.resourceId!) ?? [];
+      list.push(b);
+      byResource.set(b.resourceId!, list);
+    }
+
+    return {
+      day: localDateKey(dayStart, tz),
+      timezone: tz,
+      dayStart: dayStart.toISOString(),
+      dayEnd: dayEnd.toISOString(),
+      rooms: resources.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        capacity: r.capacity,
+        category: r.category,
+        floor: (r as any).floor ?? null,
+        bookings: byResource.get(r.id) ?? [],
+      })),
+    };
+  }
+
+  /**
    * A room's day at a glance — what the QR sticker on the door leads to.
    *
    * Requires a signed-in member of the tenant: it names who booked each slot,

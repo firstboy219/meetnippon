@@ -9,6 +9,7 @@ const ICONS: Record<string, React.ReactNode> = {
   '/dashboard': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></svg>,
   '/book': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>,
   '/bookings': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>,
+  '/schedule': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 5h18M3 12h18M3 19h18" /><rect x="6" y="3" width="5" height="4" rx="1" fill="currentColor" stroke="none" /><rect x="13" y="10" width="7" height="4" rx="1" fill="currentColor" stroke="none" /><rect x="5" y="17" width="6" height="4" rx="1" fill="currentColor" stroke="none" /></svg>,
   '/calendar': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /><rect x="7" y="12" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" /><rect x="13" y="12" width="4" height="3" rx="0.5" fill="currentColor" stroke="none" /></svg>,
   '/history': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7.5V12l3 2" /></svg>,
   '/approvals': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>,
@@ -24,6 +25,7 @@ const ITEMS: { href: string; key: string; flag?: string }[] = [
   { href: '/dashboard', key: 'nav.dashboard' },
   { href: '/book', key: 'nav.book' },
   { href: '/bookings', key: 'nav.bookings' },
+  { href: '/schedule', key: 'nav.schedule' },
   { href: '/calendar', key: 'nav.calendar' },
   { href: '/history', key: 'nav.history' },
   { href: '/approvals', key: 'nav.approval' },
@@ -34,8 +36,8 @@ const ITEMS: { href: string; key: string; flag?: string }[] = [
   { href: '/chat', key: 'nav.chat', flag: 'chat' },
 ];
 
-export default function Sidebar({ pendingCount, mobileOpen, onCloseMobile }: {
-  pendingCount: number; mobileOpen: boolean; onCloseMobile: () => void;
+export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCloseMobile }: {
+  pendingCount: number; chatUnread?: number; mobileOpen: boolean; onCloseMobile: () => void;
 }) {
   const path = usePathname();
   const { t } = useI18n();
@@ -76,6 +78,9 @@ export default function Sidebar({ pendingCount, mobileOpen, onCloseMobile }: {
               <span className="nav-label">{t(it.key)}</span>
               {it.href === '/approvals' && pendingCount > 0 ? (
                 <span className="nav-badge">{pendingCount}</span>
+              ) : null}
+              {it.href === '/chat' && chatUnread > 0 ? (
+                <span className="nav-badge">{chatUnread > 99 ? '99+' : chatUnread}</span>
               ) : null}
             </Link>
           );

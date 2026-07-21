@@ -88,7 +88,11 @@ export class MailService implements OnModuleInit {
 
   /** Same as send() but awaitable — used by tests and by the admin probe. */
   async sendAndReport(input: MailInput): Promise<boolean> {
-    const to = Array.isArray(input.to) ? input.to.filter(Boolean) : [input.to];
+    // Normalise then filter: a bare '' arrives as a one-element array and would
+    // otherwise reach the transport as a send with no recipient.
+    const to = (Array.isArray(input.to) ? input.to : [input.to])
+      .map((a) => (a ?? '').trim())
+      .filter(Boolean);
     if (to.length === 0) return false;
 
     const t = await this.transportFor(input.tenantId);

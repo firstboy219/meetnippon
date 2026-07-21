@@ -56,6 +56,28 @@ export interface Resource {
   policy?: PublicPolicy;
 }
 
+/** Every room's day, for the schedule timeline. */
+export interface DayGrid {
+  day: string;
+  timezone: string;
+  /** Tenant-local midnight as a real instant — the timeline's origin. */
+  dayStart: string;
+  dayEnd: string;
+  rooms: {
+    id: string;
+    name: string;
+    type: 'ROOM' | 'DESK';
+    capacity: number;
+    category: string | null;
+    floor?: { name: string; building?: { name: string } | null } | null;
+    bookings: (RoomBooking & {
+      resourceId: string | null;
+      principalId?: string;
+      bookerId?: string;
+    })[];
+  }[];
+}
+
 /** One row of a room's day, as shown on the QR landing page. */
 export interface RoomBooking {
   id: string;
@@ -118,10 +140,20 @@ export interface ExternalTask {
   decision: 'PENDING' | 'APPROVED' | 'REJECTED'; createdAt: string;
 }
 
+export interface ChatPerson {
+  id: string; fullName: string; email?: string; department?: string | null;
+  presence?: string; lastSeenAt?: string | null;
+}
+
 export interface ChatConversation {
   id: string; isGroup: boolean; name: string;
-  members: { id: string; fullName: string; presence?: string }[];
+  members: ChatPerson[];
+  /** Everyone except the caller — the peer of a 1:1 thread. */
+  others?: ChatPerson[];
   lastMessage: { body: string; createdAt: string } | null;
+  unread?: number;
+  muted?: boolean;
+  updatedAt?: string;
 }
 
 export interface ChatMessage {

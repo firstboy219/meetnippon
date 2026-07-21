@@ -9,6 +9,8 @@ import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { NotificationService } from '../src/notification/notification.service';
 import { ChatService } from '../src/chat/chat.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
+import { ConfigService } from '@nestjs/config';
+import { TestMailService } from './helpers/test-mail';
 
 const T = 'chat-tenant';
 const U1 = 'chat-u1', U2 = 'chat-u2', U3 = 'chat-u3';
@@ -17,7 +19,9 @@ const prisma = new PrismaService();
 const audit = new AuditService(prisma);
 const flags = new FeatureFlagService(prisma, audit);
 const notifications = new NotificationService(prisma, flags);
-const chat = new ChatService(prisma, notifications, flags);
+const mail = new TestMailService();
+const chat = new ChatService(prisma, notifications, flags, mail,
+  new ConfigService({ APP_BASE_URL: 'https://test.local' }));
 
 const as = <R>(uid: string, fn: () => Promise<R>) =>
   runWithTenant({ tenantId: T, userId: uid, role: 'EMPLOYEE' }, fn);
@@ -83,5 +87,88 @@ describe('chat', () => {
 
   it('forbids a non-member from reading messages', async () => {
     await expect(as(U3, () => chat.getMessages(convId))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('counts unread for the recipient and clears it on read', async () => {
+    // U1 already sent one message; add two more.
+    await as(U1, () => chat.sendMessage(convId, 'Second'));
+    await as(U1, () => chat.sendMessage(convId, 'Third'));
+
+    const forU2: any[] = await as(U2, () => chat.listConversations());
+    expect(forU2.find((c) => c.id === convId).unread).toBe(3);
+    expect((await as(U2, () => chat.unreadCount())).count).toBe(3);
+
+    // the sender never has unread of their own messages
+    const forU1: any[] = await as(U1, () => chat.listConversations());
+    expect(forU1.find((c) => c.id === convId).unread).toBe(0);
+
+    await as(U2, () => chat.markRead(convId));
+    expect((await as(U2, () => chat.unreadCount())).count).toBe(0);
+
+    // a message arriving after the read counts again
+    await as(U1, () => chat.sendMessage(convId, 'Fourth'));
+    expect((await as(U2, () => chat.unreadCount())).count).toBe(1);
+  });
+
+  it('emails an away recipient once per burst, not once per message', async () => {
+    await as(U2, () => chat.markRead(convId));
+    await prisma.user.update({
+      where: { id: U2 },
+      data: { presence: 'OFFLINE' as any, lastSeenAt: new Date(Date.now() - 60 * 60_000) },
+    });
+    await prisma.chatMember.updateMany({
+      where: { conversationId: convId, userId: U2 }, data: { lastNotifiedAt: null },
+    });
+    mail.reset();
+
+    // Fired concurrently on purpose: the debounce must hold under a burst, not
+    // merely when messages arrive politely one at a time.
+    await Promise.all(
+      ['one', 'two', 'three', 'four', 'five'].map((b) => as(U1, () => chat.sendMessage(convId, b))),
+    );
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.recipients()).toEqual(['u2@c.co']);
+    expect(mail.sent[0].subject).toContain('sent you a message');
+    // the thread link, not a bare domain
+    expect(mail.sent[0].action?.url).toContain(convId);
+  });
+
+  it('does not email someone who is online', async () => {
+    await prisma.user.update({
+      where: { id: U2 }, data: { presence: 'AVAILABLE' as any, lastSeenAt: new Date() },
+    });
+    await prisma.chatMember.updateMany({
+      where: { conversationId: convId, userId: U2 }, data: { lastNotifiedAt: null },
+    });
+    mail.reset();
+    await as(U1, () => chat.sendMessage(convId, 'you are here'));
+    expect(mail.sent).toHaveLength(0);
+  });
+
+  it('does not email a muted thread even when away', async () => {
+    await prisma.user.update({
+      where: { id: U2 },
+      data: { presence: 'OFFLINE' as any, lastSeenAt: new Date(Date.now() - 60 * 60_000) },
+    });
+    await prisma.chatMember.updateMany({
+      where: { conversationId: convId, userId: U2 },
+      data: { muted: true, lastNotifiedAt: null },
+    });
+    mail.reset();
+    await as(U1, () => chat.sendMessage(convId, 'muted please'));
+    expect(mail.sent).toHaveLength(0);
+    await prisma.chatMember.updateMany({
+      where: { conversationId: convId, userId: U2 }, data: { muted: false },
+    });
+  });
+
+  it('creates a group and reports its members', async () => {
+    const g: any = await as(U1, () => chat.createGroup('Marketing weekly', [U2, U3]));
+    const list: any[] = await as(U3, () => chat.listConversations());
+    const found = list.find((c) => c.id === g.id);
+    expect(found).toBeTruthy();
+    expect(found.isGroup).toBe(true);
+    expect(found.name).toBe('Marketing weekly');
+    expect(found.members).toHaveLength(3);
   });
 });

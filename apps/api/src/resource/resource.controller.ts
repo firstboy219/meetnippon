@@ -17,7 +17,12 @@ export class ResourceController {
     return this.resources.list({ type, category, floorId, q });
   }
 
-  // Declared before ':id' so the literal segment wins the route match.
+  // Literal segments before ':id', so they win the route match.
+  @Get('schedule')
+  dayGrid(@Query('day') day?: string, @Query('type') type?: 'ROOM' | 'DESK') {
+    return this.resources.dayGrid(day, type);
+  }
+
   @Get(':id/schedule')
   schedule(@Param('id') id: string, @Query('day') day?: string) {
     return this.resources.schedule(id, day);

@@ -517,6 +517,11 @@ model ChatMember {
   userId         String
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   muted          Boolean          @default(false)
+  /// How far this member has read. Unread = messages after this instant.
+  lastReadAt     DateTime?
+  /// When we last emailed them about unread messages here, so a burst of
+  /// messages produces one nudge rather than one per message.
+  lastNotifiedAt DateTime?
   joinedAt       DateTime         @default(now())
 
   @@unique([conversationId, userId])

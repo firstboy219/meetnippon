@@ -27,9 +27,13 @@ describe('mail configuration', () => {
   });
 
   it('never sends to an empty recipient list', async () => {
-    const svc = build({ SMTP_HOST: 'smtp.example.com' });
+    // Deliberately disabled: this must refuse *before* reaching a transport, so
+    // an enabled service would only prove that a DNS lookup failed.
+    const svc = build();
     await expect(svc.sendAndReport({ to: [], subject: 's', text: 't' })).resolves.toBe(false);
     await expect(svc.sendAndReport({ to: '', subject: 's', text: 't' })).resolves.toBe(false);
+    await expect(svc.sendAndReport({ to: '   ', subject: 's', text: 't' })).resolves.toBe(false);
+    await expect(svc.sendAndReport({ to: ['', '  '], subject: 's', text: 't' })).resolves.toBe(false);
   });
 });
 
