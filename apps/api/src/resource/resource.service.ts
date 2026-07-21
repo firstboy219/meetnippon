@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PolicyResolverService } from '../booking/policy/policy-resolver.service';
 import { PolicyRules } from '../booking/policy/policy.types';
+import { addLocalDays, localDateKey, startOfDayInTz } from '../common/tz.util';
+import { tenantTimezone } from '../common/tenant-tz';
 
 export interface ResourceFilter {
   type?: 'ROOM' | 'DESK';
@@ -100,5 +102,56 @@ export class ResourceService {
       category: resource.category,
     });
     return { ...resource, policy: toPublic(rules) };
+  }
+
+  /**
+   * A room's day at a glance — what the QR sticker on the door leads to.
+   *
+   * Requires a signed-in member of the tenant: it names who booked each slot,
+   * which is colleague information, not something a passing visitor should get
+   * by pointing a phone at a door.
+   *
+   * `day` is a calendar date on the **tenant's** clock, so "today" means the
+   * office's today rather than the server's.
+   */
+  async schedule(id: string, day?: string) {
+    const resource = await this.getOne(id);
+    const tz = await tenantTimezone(this.prisma);
+
+    const base = day && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? new Date(`${day}T12:00:00.000Z`)
+      : new Date();
+    const dayStart = startOfDayInTz(base, tz);
+    const dayEnd = addLocalDays(dayStart, 1, tz);
+
+    const bookings = await this.prisma.scoped.booking.findMany({
+      where: {
+        resourceId: id,
+        status: { in: ['PENDING', 'APPROVED', 'WAITLIST'] },
+        startTime: { lt: dayEnd },
+        endTime: { gt: dayStart },
+      },
+      orderBy: { startTime: 'asc' },
+      select: {
+        id: true, title: true, startTime: true, endTime: true, status: true,
+        principal: { select: { fullName: true, department: true } },
+      },
+    });
+
+    const now = new Date();
+    const current = bookings.find((b) => b.startTime <= now && b.endTime > now) ?? null;
+    const next = bookings.find((b) => b.startTime > now) ?? null;
+
+    return {
+      resource,
+      timezone: tz,
+      day: localDateKey(dayStart, tz),
+      // Only meaningful for today; a past or future date has no "right now".
+      isToday: localDateKey(now, tz) === localDateKey(dayStart, tz),
+      busyNow: Boolean(current),
+      current,
+      next,
+      bookings,
+    };
   }
 }

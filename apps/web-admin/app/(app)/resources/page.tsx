@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { AdminFloor, AdminResource } from '@/lib/types';
 import { ConfirmModal, Modal } from '@/components/Modal';
+import RoomQrModal from '@/components/RoomQrModal';
 
 const STATUS_BADGE: Record<string, string> = { ACTIVE: 'green', MAINTENANCE: 'amber', INACTIVE: 'grey' };
 const FORM_ID = 'resource-form';
@@ -17,6 +18,7 @@ export default function ResourcesPage() {
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<AdminResource | 'new' | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [qrFor, setQrFor] = useState<AdminResource | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -59,6 +61,7 @@ export default function ResourcesPage() {
                   <td>{r.category ?? '—'}</td>
                   <td><span className={`badge ${STATUS_BADGE[r.status]}`}>{t(`status.${r.status}`)}</span></td>
                   <td><div className="row-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setQrFor(r)}>{t('qr.button')}</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditing(r)}>{t('common.edit')}</button>
                     <button className="btn btn-danger btn-sm" onClick={() => setConfirmId(r.id)}>{t('common.delete')}</button>
                   </div></td>
@@ -74,6 +77,7 @@ export default function ResourcesPage() {
         <ConfirmModal title={t('res.confirm_title')} body={t('res.confirm_body')} confirmLabel={t('common.delete')}
           busy={busy} onClose={() => setConfirmId(null)} onConfirm={() => remove(confirmId)} />
       ) : null}
+      {qrFor ? <RoomQrModal resource={qrFor} onClose={() => setQrFor(null)} /> : null}
     </div>
   );
 }
@@ -98,13 +102,15 @@ function ResourceModal({ row, onClose, onSaved }: { row: AdminResource | null; o
   async function save(e: React.FormEvent) {
     e.preventDefault(); setBusy(true);
     const payload = {
-      type, name, category: category || undefined, capacity: Number(capacity),
+      name, category: category || undefined, capacity: Number(capacity),
       facilities: facilities.split(',').map((s) => s.trim()).filter(Boolean),
       floorId: floorId || undefined,
     };
     try {
+      // `type` is fixed once a resource exists — the picker is disabled on edit
+      // and the update DTO rejects it, so it is only sent on create.
       if (row) await api.put(`/admin/resources/${row.id}`, { ...payload, status });
-      else await api.post('/admin/resources', payload);
+      else await api.post('/admin/resources', { ...payload, type });
       onSaved();
     } catch (e: any) { push(e?.message || t('common.save_failed'), 'error'); }
     finally { setBusy(false); }

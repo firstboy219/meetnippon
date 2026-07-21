@@ -56,6 +56,27 @@ export interface Resource {
   policy?: PublicPolicy;
 }
 
+/** One row of a room's day, as shown on the QR landing page. */
+export interface RoomBooking {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  principal?: { fullName: string; department: string | null } | null;
+}
+
+export interface RoomSchedule {
+  resource: Resource;
+  timezone: string;
+  day: string;
+  isToday: boolean;
+  busyNow: boolean;
+  current: RoomBooking | null;
+  next: RoomBooking | null;
+  bookings: RoomBooking[];
+}
+
 export interface DirectoryUser {
   id: string; fullName: string; email: string; department: string | null;
 }

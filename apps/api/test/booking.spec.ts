@@ -19,6 +19,7 @@ import { CalendarService } from '../src/calendar/calendar.service';
 import { NotificationService } from '../src/notification/notification.service';
 import { ConfigService } from '@nestjs/config';
 import { TestMailService } from './helpers/test-mail';
+import { ResourceService } from '../src/resource/resource.service';
 import { runWithTenant } from '../src/tenant/tenant-context';
 
 const A = 'bk-tA';
@@ -329,6 +330,35 @@ describe('booking core', () => {
     await asEmp(() => booking.update(b.id, { title: 'Quiet v2' }));
     expect(await prisma.notification.count({ where: { tenantId: A } })).toBe(0);
     expect(mail.sent).toHaveLength(0);
+  });
+
+  it('shows a room\'s day with who booked it, scoped to the tenant', async () => {
+    const resources = new ResourceService(prisma, resolver);
+
+    const day = iso(at(12)).slice(0, 10);
+    const s: any = await asEmp(() => resources.schedule('roomA1', day));
+
+    expect(s.resource.id).toBe('roomA1');
+    expect(s.bookings.length).toBeGreaterThan(0);
+    // the point of the page: a name against each slot
+    expect(s.bookings[0].principal.fullName).toBe('Emp A');
+    // ordered by start so a door display reads top to bottom
+    const starts = s.bookings.map((b: any) => new Date(b.startTime).getTime());
+    expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+    // cancelled/rejected slots must not make a free room look busy
+    expect(s.bookings.every((b: any) => ['PENDING', 'APPROVED', 'WAITLIST'].includes(b.status))).toBe(true);
+
+    // a day with nothing on it is empty, not an error
+    const quiet: any = await asEmp(() => resources.schedule('roomA3', '2019-01-01'));
+    expect(quiet.bookings).toEqual([]);
+    expect(quiet.busyNow).toBe(false);
+
+    // and another tenant cannot read the room at all
+    await expect(
+      runWithTenant({ tenantId: B, userId: EMP_B, role: 'EMPLOYEE' }, () =>
+        resources.schedule('roomA1'),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('does not leak bookings across tenants', async () => {

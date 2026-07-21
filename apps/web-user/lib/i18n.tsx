@@ -159,6 +159,18 @@ const DICT: Dict = {
   'edit.reapproval_warning': { en: 'Changing the time sends this booking back for approval.', id: 'Mengubah waktu membuat booking ini harus disetujui ulang.' },
   'edit.will_notify': { en: '{n} participants will be told the meeting moved.', id: '{n} peserta akan diberi tahu bahwa rapat dipindahkan.' },
 
+  'room.busy': { en: 'In use', id: 'Sedang dipakai' },
+  'room.free': { en: 'Free now', id: 'Kosong sekarang' },
+  'room.schedule': { en: 'Schedule', id: 'Jadwal' },
+  'room.until': { en: 'until', id: 'sampai' },
+  'room.next_at': { en: 'next booking at', id: 'booking berikutnya pukul' },
+  'room.free_all_day': { en: 'nothing booked today', id: 'tidak ada booking hari ini' },
+  'room.empty': { en: 'No bookings on this day.', id: 'Tidak ada booking di hari ini.' },
+  'room.someone': { en: 'A colleague', id: 'Seorang rekan' },
+  'room.book_this': { en: 'Book a room', id: 'Pesan ruang' },
+  'room.people': { en: 'people', id: 'orang' },
+  'room.seat': { en: 'seat', id: 'kursi' },
+
   'cal.today': { en: 'Today', id: 'Hari ini' },
   'cal.prev': { en: 'Previous month', id: 'Bulan sebelumnya' },
   'cal.next': { en: 'Next month', id: 'Bulan berikutnya' },

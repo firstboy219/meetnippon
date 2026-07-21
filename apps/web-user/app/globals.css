@@ -273,6 +273,25 @@ tr:last-child td { border-bottom: none; }
   border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- Room page (QR landing) ---------- */
+.room-page { display: flex; flex-direction: column; gap: 18px; }
+.room-status { display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  flex-wrap: wrap; padding: 22px 26px; border-radius: 18px; color: #fff; }
+.room-status.free { background: linear-gradient(120deg, var(--green) 0%, #2E7D3C 100%); }
+.room-status.busy { background: linear-gradient(120deg, var(--coral) 0%, #B33C1F 100%); }
+.room-status-name { font-family: 'Space Grotesk'; font-size: 26px; font-weight: 700; line-height: 1.2; }
+.room-status-sub { font-size: 13px; color: rgba(255,255,255,.85); margin-top: 4px; }
+.room-status-badge { text-align: right; }
+.room-status-badge strong { display: block; font-size: 17px; }
+.room-status-badge span { font-size: 12.5px; color: rgba(255,255,255,.85); }
+.cal-day-item.is-now { background: var(--teal-tint); border-radius: 10px; padding-left: 10px; padding-right: 10px; }
+
+@media (max-width: 820px) {
+  .room-status { padding: 18px; }
+  .room-status-name { font-size: 21px; }
+  .room-status-badge { text-align: left; }
+}
+
 /* ---------- Participant picker ---------- */
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 11px;

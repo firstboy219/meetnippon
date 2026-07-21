@@ -40,6 +40,42 @@
 | MAIL-2 | SMTP configurable from the admin console (encrypted at rest) | ✅ DONE (2026-07-21) |
 | PAGE-1 | Pagination + filters for admin audit / users / bookings | ✅ DONE (2026-07-21) |
 | BRAND-1 | Branding actually reaches the user portal | ✅ DONE (2026-07-21) |
+| QR-1 | Room QR codes + door-schedule page; resource-edit 400 fixed | ✅ DONE (2026-07-21) |
+
+---
+
+## QR-1 — Room QR codes — DONE (2026-07-21)
+
+**147/147 tests pass.**
+
+**Bug fixed first: editing a resource returned `property type should not exist`.** The console sent
+`type` on every save, but `UpdateResourceDto` deliberately omits it — a resource's type is fixed once
+it exists (changing a ROOM into a DESK under live bookings is meaningless), which is why the picker
+is already disabled on edit. The fix is in the **console**, not the DTO: `type` is now sent only on
+create. Confirmed live that a normal edit returns 200 and that sending `type` is still refused.
+
+**Room QR.** Each resource gets a printable code from Admin → Resources → **QR**. It encodes the user
+portal's `/room/<id>` page, so scanning opens something a person can read rather than raw API JSON.
+The modal offers print (a clean sticker layout with the room name and a scan hint), PNG download, and
+copy-link. Generated client-side with `qrcode`, so no authenticated image request is needed — an
+`<img>` cannot carry a bearer token.
+
+**The page it opens** shows a large free/in-use banner, what is on now and what is next, the whole
+day's bookings **with who booked each slot and their department**, and day-stepper navigation.
+It refreshes itself every 60s, since a door display is left open. Times render on the tenant's clock,
+and the day boundary is the tenant's midnight — a 23:00 UTC booking correctly belongs to the *next*
+Jakarta day, which my first probe got wrong before the logic did.
+
+**Privacy decision — the page requires sign-in.** It names colleagues, so it lives inside the
+authenticated area: pointing a phone at a door as a visitor gets the login screen, not a list of who
+is meeting whom. Verified: unauthenticated **401**, unknown room **404**, and another tenant cannot
+read the room at all. Cancelled and rejected bookings are excluded so a free room never looks busy.
+
+**Observation, not a defect** — the pilot tenant's demo resources are gone; only `Solareflect` and
+`Superlac` remain, both owner-created. The owner is populating real rooms. My first smoke used a
+stale demo id and 404'd because of that, not because of a bug.
+
+---
 
 ---
 
