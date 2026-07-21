@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import type { Stats, AdminBooking } from '@/lib/types';
+import type { Stats, AdminBooking, Page } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
 
 const BADGE: Record<string, string> = {
@@ -19,7 +19,9 @@ export default function AdminDashboard() {
     setErr(false);
     Promise.all([
       api.get<Stats>('/admin/stats').then(setStats),
-      api.get<AdminBooking[]>('/admin/bookings').then((b) => setBookings(b.slice(0, 8))),
+      // Ask for exactly the 8 rows this panel shows, rather than fetching a
+      // page and discarding most of it.
+      api.get<Page<AdminBooking>>('/admin/bookings?pageSize=8').then((r) => setBookings(r.items)),
     ]).catch(() => setErr(true));
   }, []);
   useEffect(() => { load(); }, [load]);

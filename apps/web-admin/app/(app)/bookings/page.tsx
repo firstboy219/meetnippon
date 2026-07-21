@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import type { AdminBooking } from '@/lib/types';
+import type { AdminBooking, Page } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
+import Pager from '@/components/Pager';
 
 const BADGE: Record<string, string> = {
   APPROVED: 'green', COMPLETED: 'green', PENDING: 'amber', WAITLIST: 'amber', REJECTED: 'red', CANCELLED: 'grey',
@@ -12,24 +13,39 @@ const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
 
 export default function AdminBookingsPage() {
   const { t } = useI18n();
-  const [rows, setRows] = useState<AdminBooking[]>([]);
+  const [data, setData] = useState<Page<AdminBooking> | null>(null);
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useState('ALL');
+  const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
 
+  const [term, setTerm] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => { setTerm(q); setPage(1); }, 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
   const load = useCallback(() => {
     setErr(false); setLoading(true);
-    const q = filter === 'ALL' ? '' : `?status=${filter}`;
-    api.get<AdminBooking[]>(`/admin/bookings${q}`).then(setRows).catch(() => setErr(true)).finally(() => setLoading(false));
-  }, [filter]);
+    const p = new URLSearchParams({ page: String(page), pageSize: '25' });
+    if (filter !== 'ALL') p.set('status', filter);
+    if (term) p.set('q', term);
+    api.get<Page<AdminBooking>>(`/admin/bookings?${p}`)
+      .then(setData).catch(() => setErr(true)).finally(() => setLoading(false));
+  }, [filter, term, page]);
   useEffect(() => { load(); }, [load]);
+
+  const rows = data?.items ?? [];
 
   return (
     <div>
       <div className="page-head"><h1>{t('book.title')}</h1></div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+      <div className="toolbar">
+        <input className="search" placeholder={t('book.search')} value={q} onChange={(e) => setQ(e.target.value)} />
         {FILTERS.map((f) => (
-          <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(f)}>
+          <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => { setFilter(f); setPage(1); }}>
             {t(`status.${f}`)}
           </button>
         ))}
@@ -41,7 +57,7 @@ export default function AdminBookingsPage() {
         </div>
       ) : (
         <div className="card">
-          {loading ? <div className="empty">{t('common.loading')}</div> : (
+          {loading && !data ? <div className="empty">{t('common.loading')}</div> : (
             <div className="table-wrap">
               <table>
                 <thead><tr><th>{t('th.when')}</th><th>{t('th.title')}</th><th>{t('th.resource')}</th><th>{t('th.approvals')}</th><th>{t('th.status')}</th></tr></thead>
@@ -68,6 +84,10 @@ export default function AdminBookingsPage() {
               </table>
             </div>
           )}
+          {data ? (
+            <Pager page={data.page} pages={data.pages} total={data.total}
+              pageSize={data.pageSize} busy={loading} onPage={setPage} />
+          ) : null}
         </div>
       )}
     </div>

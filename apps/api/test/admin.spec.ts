@@ -152,6 +152,61 @@ describe('admin user management', () => {
   });
 });
 
+describe('user list paging', () => {
+  it('pages, reports a real total, and never leaks another tenant\'s users', async () => {
+    await asAdmin(async () => {
+      for (let i = 0; i < 7; i++) {
+        await users.create({ email: `page${i}@a.co`, fullName: `Page User ${i}`, role: 'EMPLOYEE' });
+      }
+    });
+    await asAdminB(() => users.create({ email: 'other@b.co', fullName: 'Other Tenant' }));
+
+    const first = await asAdmin(() => users.list({ page: 1, pageSize: 3 }));
+    expect(first.items).toHaveLength(3);
+    expect(first.pageSize).toBe(3);
+    expect(first.pages).toBe(Math.ceil(first.total / 3));
+    // the count is of this tenant only
+    expect(first.items.every((u: any) => u.email.endsWith('@a.co'))).toBe(true);
+
+    const second = await asAdmin(() => users.list({ page: 2, pageSize: 3 }));
+    expect(second.items[0].id).not.toBe(first.items[0].id);
+    // pages do not overlap
+    const ids = new Set(first.items.map((u: any) => u.id));
+    expect(second.items.some((u: any) => ids.has(u.id))).toBe(false);
+
+    // a page past the end is empty, not an error
+    const far = await asAdmin(() => users.list({ page: 999, pageSize: 3 }));
+    expect(far.items).toHaveLength(0);
+    expect(far.total).toBe(first.total);
+  });
+
+  it('filters by search term and by role', async () => {
+    const byName = await asAdmin(() => users.list({ q: 'Page User 3' }));
+    expect(byName.total).toBe(1);
+    expect(byName.items[0].fullName).toBe('Page User 3');
+
+    const byEmail = await asAdmin(() => users.list({ q: 'page5@a.co' }));
+    expect(byEmail.total).toBe(1);
+
+    const admins = await asAdmin(() => users.list({ role: 'ADMIN' }));
+    expect(admins.items.every((u: any) => u.role === 'ADMIN')).toBe(true);
+
+    const nothing = await asAdmin(() => users.list({ q: 'no-such-person' }));
+    expect(nothing.total).toBe(0);
+    expect(nothing.pages).toBe(1); // never "page 1 of 0"
+  });
+
+  it('filters by active state', async () => {
+    const target = (await asAdmin(() => users.list({ q: 'page0@a.co' }))).items[0];
+    await asAdmin(() => users.setActive(target.id, { isActive: false }));
+
+    const inactive = await asAdmin(() => users.list({ isActive: 'false' }));
+    expect(inactive.items.some((u: any) => u.id === target.id)).toBe(true);
+    const active = await asAdmin(() => users.list({ isActive: 'true' }));
+    expect(active.items.some((u: any) => u.id === target.id)).toBe(false);
+  });
+});
+
 describe('admin branding', () => {
   it('rejects an invalid subdomain and accepts a valid one', async () => {
     await expect(asAdmin(() => branding.update({ subdomain: 'ab' }))).rejects.toBeInstanceOf(BadRequestException);

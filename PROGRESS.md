@@ -38,6 +38,49 @@
 | SYNC-1 | Admin settings actually reach the user portal | ✅ DONE (2026-07-20) |
 | MAIL-1 | Outbound email service | ⚠️ BUILT & DEPLOYED — **blocked on a valid SMTP credential** |
 | MAIL-2 | SMTP configurable from the admin console (encrypted at rest) | ✅ DONE (2026-07-21) |
+| PAGE-1 | Pagination + filters for admin audit / users / bookings | ✅ DONE (2026-07-21) |
+
+---
+
+## PAGE-1 — Admin list pagination — DONE (2026-07-21)
+
+The last item on the P3 list. **141/141 tests pass** (9 new).
+
+**The bug was silent truncation.** `/admin/audit` returned a bare `take: 100` and `/admin/bookings`
+a `take: 200`, with nothing to say more existed; `/admin/users` had no limit at all and would have
+grown unbounded. Live proof after the fix: the pilot tenant's audit log holds **119 rows — 19 of
+them had been unreachable**.
+
+**API** — shared `src/common/pagination.ts` (`PageQueryDto`, `pageParams`, `toPage`). All three
+endpoints now return `{ items, total, page, pageSize, pages }` and run the row query and the count
+in one `Promise.all`. `pages` is floored at 1 so the console can never render "page 1 of 0";
+`pageParams` clamps `page ≥ 1` and `pageSize` to 1..200 so a hand-edited query cannot ask for a
+negative offset or the whole table.
+
+**Filters, because paging alone does not make a long log usable:**
+- audit — action prefix, entity, actor, date range
+- users — search across name + email, role, active state
+- bookings — status, title search, date range
+
+**Web** — shared `Pager` component (first / prev / next / last, "1–25 of 1,432"). Search inputs are
+debounced 300 ms, and any filter change resets to page 1 — otherwise you land on page 7 of a
+2-page result. Tables keep the previous rows visible while the next page loads instead of blanking.
+
+**Caught during the change:** the admin **dashboard** also consumed `/admin/bookings` and expected a
+bare array; the new envelope would have broken its "recent bookings" panel silently. It now asks for
+`?pageSize=8` — exactly the rows it renders — instead of fetching a slice and discarding most of it.
+
+**Gotcha recorded** — `pagination.spec.ts` failed to even load with
+`TypeError: Reflect.getMetadata is not a function`. It is the only spec that imports a
+decorator-using module *without* going through Nest first, which is what normally pulls in
+`reflect-metadata`; the import is now explicit at the top of that spec.
+
+**Verified live** — page 1 and page 2 return different rows; `total` is the real count, not the page
+size; action and role filters narrow correctly; a page past the end is empty rather than an error;
+`pageSize=9999`, `page=0` and an invalid status all **400**; EMPLOYEE still **403** on all three;
+no `passwordHash` in any user payload.
+
+---
 
 ---
 
@@ -317,7 +360,7 @@ Commit `3e7f830`. QA agent audited all 37 page/component files in both portals a
 
 **Design tokens:** audit found 100% parity with mockups (teal `#0E6E55`, coral `#E4572E`, Space Grotesk/Inter) — no drift, no changes needed.
 
-**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search, and **floor-plan image upload** (URLs work today; upload needs object storage). Also still open: pagination for **admin** audit/users lists (still unbounded), Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1. Admin office locations/geofence + floor plans — done, see LOC-1; the user-facing Denah view that consumes those plans is still open.)*
+**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search, and **floor-plan image upload** (URLs work today; upload needs object storage). Also still open: Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1. Admin office locations/geofence + floor plans — done, see LOC-1; the user-facing Denah view that consumes those plans is still open.)*
 
 ---
 

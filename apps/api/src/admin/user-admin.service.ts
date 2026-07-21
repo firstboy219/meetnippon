@@ -10,6 +10,8 @@ import { hashPassword } from '../auth/password.util';
 import { PlanService } from '../billing/plan.service';
 import { MailService } from '../mail/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { pageParams, toPage } from '../common/pagination';
+import { UserListQueryDto } from './dto/overview-query.dto';
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -32,11 +34,33 @@ export class UserAdminService {
     private readonly config: ConfigService,
   ) {}
 
-  list() {
-    return this.prisma.scoped.user.findMany({
-      orderBy: { fullName: 'asc' },
-      select: SAFE_SELECT,
-    });
+  async list(q: UserListQueryDto = {}) {
+    const { skip, take, page, pageSize } = pageParams(q);
+    const term = q.q?.trim();
+    const where = {
+      ...(q.role ? { role: q.role as any } : {}),
+      ...(q.isActive !== undefined ? { isActive: q.isActive === 'true' } : {}),
+      ...(term
+        ? {
+          OR: [
+            { fullName: { contains: term, mode: 'insensitive' as const } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+          ],
+        }
+        : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.scoped.user.findMany({
+        where,
+        orderBy: { fullName: 'asc' },
+        select: SAFE_SELECT,
+        skip,
+        take,
+      }),
+      this.prisma.scoped.user.count({ where }),
+    ]);
+    return toPage(items, total, page, pageSize);
   }
 
   async create(dto: CreateUserDto) {

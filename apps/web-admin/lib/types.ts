@@ -1,4 +1,13 @@
 export type UserRole = 'ADMIN' | 'APPROVER' | 'EMPLOYEE';
+
+/** Envelope returned by the paged admin list endpoints. */
+export interface Page<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+}
 export type Lang = 'en' | 'id';
 
 export interface AuthUser {

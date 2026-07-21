@@ -4,8 +4,9 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
-import type { AdminUser, UserRole } from '@/lib/types';
+import type { AdminUser, Page, UserRole } from '@/lib/types';
 import { ConfirmModal, Modal } from '@/components/Modal';
+import Pager from '@/components/Pager';
 
 const FORM_ID = 'user-form';
 const ROLES: UserRole[] = ['EMPLOYEE', 'APPROVER', 'ADMIN'];
@@ -14,7 +15,11 @@ export default function UsersPage() {
   const { t } = useI18n();
   const { push } = useToast();
   const { user: me } = useAuth();
-  const [rows, setRows] = useState<AdminUser[]>([]);
+  const [data, setData] = useState<Page<AdminUser> | null>(null);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState('');
+  const [active, setActiveFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -22,11 +27,26 @@ export default function UsersPage() {
   const [roleReq, setRoleReq] = useState<{ id: string; role: UserRole } | null>(null);
   const [deactivate, setDeactivate] = useState<AdminUser | null>(null);
 
+  // Debounced so typing in the search box does not fire a request per keystroke.
+  const [term, setTerm] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => { setTerm(q); setPage(1); }, 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
   const load = useCallback(() => {
     setErr(false); setLoading(true);
-    api.get<AdminUser[]>('/admin/users').then(setRows).catch(() => setErr(true)).finally(() => setLoading(false));
-  }, []);
+    const p = new URLSearchParams({ page: String(page), pageSize: '25' });
+    if (term) p.set('q', term);
+    if (role) p.set('role', role);
+    if (active) p.set('isActive', active);
+    api.get<Page<AdminUser>>(`/admin/users?${p}`)
+      .then(setData).catch(() => setErr(true)).finally(() => setLoading(false));
+  }, [page, term, role, active]);
   useEffect(() => { load(); }, [load]);
+
+  const rows = data?.items ?? [];
+  const filtered = Boolean(term || role || active);
 
   function requestRole(u: AdminUser, role: UserRole) {
     if (role === u.role) return;
@@ -49,7 +69,7 @@ export default function UsersPage() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="empty">{t('common.loading')}</div>;
+  if (loading && !data) return <div className="empty">{t('common.loading')}</div>;
   if (err) {
     return (
       <div className="err-box err-row">
@@ -62,6 +82,24 @@ export default function UsersPage() {
   return (
     <div>
       <div className="page-head"><h1>{t('users.title')}</h1><button className="btn btn-primary" onClick={() => setCreating(true)}>{t('users.new')}</button></div>
+
+      <div className="toolbar">
+        <input className="search" placeholder={t('users.search')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="filter-pill" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} aria-label={t('th.role')}>
+          <option value="">{t('users.all_roles')}</option>
+          {ROLES.map((r) => <option key={r} value={r}>{t(`role.${r}`)}</option>)}
+        </select>
+        <select className="filter-pill" value={active} onChange={(e) => { setActiveFilter(e.target.value); setPage(1); }} aria-label={t('th.status')}>
+          <option value="">{t('users.all_status')}</option>
+          <option value="true">{t('status.ACTIVE')}</option>
+          <option value="false">{t('status.INACTIVE')}</option>
+        </select>
+        {filtered ? (
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => { setQ(''); setRole(''); setActiveFilter(''); setPage(1); }}>{t('hist.reset')}</button>
+        ) : null}
+      </div>
+
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -87,10 +125,16 @@ export default function UsersPage() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 ? <tr><td colSpan={6}><div className="empty">{t('users.empty')}</div></td></tr> : null}
+              {rows.length === 0 ? (
+                <tr><td colSpan={6}><div className="empty">{filtered ? t('users.empty_filtered') : t('users.empty')}</div></td></tr>
+              ) : null}
             </tbody>
           </table>
         </div>
+        {data ? (
+          <Pager page={data.page} pages={data.pages} total={data.total}
+            pageSize={data.pageSize} busy={loading} onPage={setPage} />
+        ) : null}
       </div>
       {creating ? <CreateUserModal onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} /> : null}
       {roleReq ? (
