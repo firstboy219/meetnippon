@@ -42,6 +42,46 @@
 | BRAND-1 | Branding actually reaches the user portal | ✅ DONE (2026-07-21) |
 | QR-1 | Room QR codes + door-schedule page; resource-edit 400 fixed | ✅ DONE (2026-07-21) |
 | DATA-1 | PT NPC master data: 10 rooms + 255 active bookings imported | ✅ DONE (2026-07-21) |
+| DEMO-1 | Single-organisation mode: billing hidden, workspace pinned, limits raised | ✅ DONE (2026-07-21) |
+
+---
+
+## DEMO-1 — Single-organisation mode — DONE (2026-07-21)
+
+For an internal demo where the source is handed to the audience. Done with **env switches, not
+deletions** — every capability still exists and returns by clearing one variable. Nothing was
+removed from the product.
+
+| Switch | Value | Effect |
+|---|---|---|
+| `NEXT_PUBLIC_HIDE_BILLING` | `true` | Billing dropped from the admin nav and from the welcome tour. The `/billing` page still works if visited directly — hidden, not disabled. |
+| `NEXT_PUBLIC_DEFAULT_WORKSPACE` | `nipsea` | Workspace field removed from **both** login screens; every sign-in and SSO start sends `nipsea` automatically. Also brands the login page on load, since the slug is known before typing. |
+| `NEXT_PUBLIC_EMAIL_HINT` | `you@nipseapaint.com` | Login placeholder shows the real staff domain. |
+| `PLAN_MAX_USERS` / `PLAN_MAX_RESOURCES` | `9999` | Deployment-wide ceiling that overrides whatever the plan says. Plan tiers themselves are untouched; unset the vars and per-plan enforcement returns. Pilot tenant also set to `ENTERPRISE`. |
+
+**Two build/config traps caught here, both worth remembering:**
+
+1. **`NEXT_PUBLIC_*` is inlined at build time.** Setting it on the container does nothing. Both
+   portal Dockerfiles now take them as `ARG`s and the deploy passes `--build-arg`. The first attempt
+   built with empty args and *looked* successful — the switches simply had no effect.
+2. **`.env` had `SMTP_FROM=MeetNippon <muhilhamps@gmail.com>` unquoted**, so any script that sources
+   it died on `<` as a shell redirection. That is what silently emptied the build args. The value is
+   now quoted.
+3. **A regex bug that hid itself.** Both the include and exclude filters used
+   `^(SMTP_|PLAN_MAX_)=` — requiring `=` *immediately* after the prefix, which matches nothing,
+   since the real keys are `SMTP_HOST=`, `PLAN_MAX_USERS=`. The two mistakes cancelled out for SMTP
+   (never excluded, so it survived by accident) but `PLAN_MAX_` was genuinely lost. Corrected to a
+   prefix match with no `=`.
+
+**Verified live** — "Workspace" appears 0 times on either login page; login returns 200 with the slug
+injected by the portal; billing absent from nav yet `/billing` still 200; billing summary reports
+`ENTERPRISE, 9999 users / 9999 resources` against 7 users and 10 rooms; mail still
+`ok: true`; the 277 bookings and 10 rooms are intact.
+
+**Recorded for later** — PT NPC staff email domains are **nipseapaint.com** and
+**nipponpaint-indonesia.com**. Needed when the 44 staff accounts are eventually created.
+
+---
 
 ---
 

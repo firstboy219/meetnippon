@@ -8,6 +8,9 @@ import type { AuthUser, Branding } from './types';
 /** Remembered so a returning user sees their own workspace, already themed. */
 const LAST_WORKSPACE = 'mn_workspace';
 
+/** Single-organisation deployments pin the workspace instead of asking. */
+const FIXED_WORKSPACE = process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE || '';
+
 interface AuthCtx {
   user: AuthUser | null;
   branding: Branding | null;
@@ -59,7 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Signed in: the session's tenant decides. Signed out: fall back to the
       // workspace this browser last used, so the login screen is already in the
       // right colours before anything is typed.
-      const remembered = tokenStore.access ? undefined : (localStorage.getItem(LAST_WORKSPACE) ?? undefined);
+      const remembered = tokenStore.access
+        ? undefined
+        : (FIXED_WORKSPACE || localStorage.getItem(LAST_WORKSPACE) || undefined);
       await loadBranding(remembered);
       if (tokenStore.access) {
         try {

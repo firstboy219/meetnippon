@@ -15,6 +15,12 @@ FROM base AS build
 WORKDIR /app/apps/web-admin
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=1536
+# Next inlines NEXT_PUBLIC_* at build time, so these must be present here —
+# setting them on the container at run time would have no effect.
+ARG NEXT_PUBLIC_HIDE_BILLING=""
+ARG NEXT_PUBLIC_DEFAULT_WORKSPACE=""
+ENV NEXT_PUBLIC_HIDE_BILLING=$NEXT_PUBLIC_HIDE_BILLING
+ENV NEXT_PUBLIC_DEFAULT_WORKSPACE=$NEXT_PUBLIC_DEFAULT_WORKSPACE
 RUN npm run build
 
 FROM node:22-bookworm-slim AS prod

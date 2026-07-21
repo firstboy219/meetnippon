@@ -25,6 +25,13 @@ const ICONS: Record<string, React.ReactNode> = {
   '/audit': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>,
 };
 
+/**
+ * Billing is hidden when the platform runs for a single organisation, where
+ * subscription tiers are not part of the story. The page itself still exists
+ * and still works — this only removes it from the navigation.
+ */
+const HIDE_BILLING = process.env.NEXT_PUBLIC_HIDE_BILLING === 'true';
+
 const ITEMS = [
   { href: '/dashboard', key: 'nav.dashboard' },
   { href: '/analytics', key: 'nav.analytics' },
@@ -69,7 +76,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 4l6 8-6 8M6 4l6 8-6 8" /></svg>
       </button>
       <nav className="side">
-        {ITEMS.map((it) => {
+        {ITEMS.filter((it) => !(HIDE_BILLING && it.href === '/billing')).map((it) => {
           const active = path === it.href || path.startsWith(it.href + '/');
           return (
             <Link key={it.href} href={it.href} className={`nav-item ${active ? 'active' : ''}`}

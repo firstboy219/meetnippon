@@ -4,13 +4,16 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 
+/** Single-organisation deployments pin the workspace instead of asking. */
+const FIXED_WORKSPACE = process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE || '';
+
 export default function LoginPage() {
   const { login, user, ready } = useAuth();
   const { t } = useI18n();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [workspace, setWorkspace] = useState('');
+  const [workspace, setWorkspace] = useState(FIXED_WORKSPACE);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -38,10 +41,12 @@ export default function LoginPage() {
           <h2>{t('login.title')}</h2>
           <div className="sub">{t('login.sub')}</div>
           {err ? <div className="err-box">{err}</div> : null}
-          <div className="f-group">
-            <label className="f-label">Workspace</label>
-            <input className="f-input" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="nipsea" autoCapitalize="none" required />
-          </div>
+          {FIXED_WORKSPACE ? null : (
+            <div className="f-group">
+              <label className="f-label">Workspace</label>
+              <input className="f-input" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="nipsea" autoCapitalize="none" required />
+            </div>
+          )}
           <div className="f-group">
             <label className="f-label">Email</label>
             <input className="f-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />

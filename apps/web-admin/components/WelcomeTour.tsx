@@ -5,14 +5,18 @@ import { useI18n } from '@/lib/i18n';
 
 const KEY = 'mn_admin_tour_v1';
 
+const HIDE_BILLING = process.env.NEXT_PUBLIC_HIDE_BILLING === 'true';
+
 const STEPS = [
-  { icon: '🛠️', title: 'Admin console', body: 'Set up and run your workspace: rooms & desks, people, booking rules, branding, integrations and billing. Quick tour of what’s where.' },
+  { icon: '🛠️', title: 'Admin console', body: `Set up and run your workspace: rooms & desks, people, booking rules, branding${HIDE_BILLING ? ' and integrations' : ', integrations and billing'}. Quick tour of what’s where.` },
   { icon: '📊', title: 'Analytics', body: 'Track booking activity, approval rate, most-used resources, and who’s in the office vs working from home today.' },
   { icon: '🏢', title: 'Resources', body: 'Create and manage meeting rooms and hot-desks — capacity, facilities, category, and maintenance status.' },
   { icon: '👥', title: 'Users', body: 'Add teammates (they get a temporary password to share), set roles (Admin / Approver / Employee), and activate or deactivate accounts.' },
   { icon: '📐', title: 'Booking Policies', body: 'Define rules that resolve Tenant → Category → Room: approval requirements, max duration, buffers, advance limits, check-in.' },
   { icon: '🎨', title: 'Branding', body: 'Set your colors and logo — they apply live to the user portal login and shell.' },
-  { icon: '🔌', title: 'Integrations & Billing', body: 'Toggle SSO, chat, calendar, recording and WhatsApp. Manage your plan and limits under Billing.' },
+  HIDE_BILLING
+    ? { icon: '🔌', title: 'Integrations', body: 'Toggle SSO, chat, calendar, recording and WhatsApp for your workspace.' }
+    : { icon: '🔌', title: 'Integrations & Billing', body: 'Toggle SSO, chat, calendar, recording and WhatsApp. Manage your plan and limits under Billing.' },
 ];
 
 export default function WelcomeTour() {

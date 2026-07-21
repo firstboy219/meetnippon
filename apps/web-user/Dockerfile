@@ -17,6 +17,12 @@ FROM base AS build
 WORKDIR /app/apps/web-user
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=1536
+# Next inlines NEXT_PUBLIC_* at build time, so these must be present here —
+# setting them on the container at run time would have no effect.
+ARG NEXT_PUBLIC_DEFAULT_WORKSPACE=""
+ARG NEXT_PUBLIC_EMAIL_HINT=""
+ENV NEXT_PUBLIC_DEFAULT_WORKSPACE=$NEXT_PUBLIC_DEFAULT_WORKSPACE
+ENV NEXT_PUBLIC_EMAIL_HINT=$NEXT_PUBLIC_EMAIL_HINT
 RUN npm run build
 
 # ---------- prod (standalone) ----------

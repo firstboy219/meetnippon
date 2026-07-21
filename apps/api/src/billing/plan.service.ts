@@ -18,6 +18,21 @@ const LIMITS: Record<Plan, PlanLimits> = {
 };
 
 /**
+ * Deployment-wide ceilings that override whatever the plan says.
+ *
+ * Set when the platform is run for a single organisation, where the tiered
+ * plans are not the point and a limit hitting mid-demo is just an obstacle.
+ * Leaving them unset restores normal per-plan enforcement — the plan model
+ * itself is untouched.
+ */
+function envLimit(name: string): number | null {
+  const raw = process.env[name];
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Subscription plans (Phase 10). The active plan is stored in the `billing`
  * feature-flag config (no schema change). Real payment is a Stripe escalation;
  * plan changes are mock/admin-driven until credentials arrive.
@@ -30,7 +45,15 @@ export class PlanService {
   ) {}
 
   limitsFor(plan: Plan): PlanLimits {
-    return LIMITS[plan] ?? LIMITS.FREE;
+    const base = LIMITS[plan] ?? LIMITS.FREE;
+    const users = envLimit('PLAN_MAX_USERS');
+    const resources = envLimit('PLAN_MAX_RESOURCES');
+    if (users == null && resources == null) return base;
+    return {
+      ...base,
+      maxUsers: users ?? base.maxUsers,
+      maxResources: resources ?? base.maxResources,
+    };
   }
 
   async getPlan(tenantId: string): Promise<Plan> {

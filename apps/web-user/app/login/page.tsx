@@ -5,6 +5,13 @@ import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { api, tokenStore } from '@/lib/api';
 
+/**
+ * When the platform runs for a single organisation there is nothing to choose,
+ * so the workspace box is hidden and every sign-in uses this slug. Unset it and
+ * the field comes back — multi-tenant behaviour is not removed, only bypassed.
+ */
+const FIXED_WORKSPACE = process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE || '';
+
 export default function LoginPage() {
   const { login, branding, user, ready, previewWorkspace } = useAuth();
   const { t } = useI18n();
@@ -12,7 +19,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [workspace, setWorkspace] = useState('');
+  const [workspace, setWorkspace] = useState(FIXED_WORKSPACE);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [unknownWorkspace, setUnknownWorkspace] = useState(false);
@@ -20,8 +27,9 @@ export default function LoginPage() {
   useEffect(() => { if (ready && user) router.replace('/dashboard'); }, [ready, user, router]);
 
   // Prefill from whatever this browser used last, so a returning user sees
-  // their own workspace already selected and themed.
+  // their own workspace already selected and themed. A fixed workspace wins.
   useEffect(() => {
+    if (FIXED_WORKSPACE) return;
     const last = localStorage.getItem('mn_workspace');
     if (last) setWorkspace(last);
   }, []);
@@ -42,7 +50,9 @@ export default function LoginPage() {
     return () => clearTimeout(id);
   }, [workspace, previewWorkspace]);
 
-  const needsWorkspace = !branding || branding.accessMode === 'SHARED_URL';
+  // Still sent on every sign-in — only the input is hidden.
+  const needsWorkspace = !FIXED_WORKSPACE && (!branding || branding.accessMode === 'SHARED_URL');
+  const workspaceToSend = FIXED_WORKSPACE || (needsWorkspace ? workspace : undefined);
   const tenantName = branding?.displayName || branding?.tenantName || 'MeetNippon';
 
   async function submit(e: React.FormEvent) {
@@ -50,7 +60,7 @@ export default function LoginPage() {
     setErr('');
     setBusy(true);
     try {
-      await login(email, password, needsWorkspace ? workspace : undefined);
+      await login(email, password, workspaceToSend);
       router.replace('/dashboard');
     } catch (e: any) {
       setErr(e?.message || 'Sign in failed.');
@@ -64,7 +74,7 @@ export default function LoginPage() {
     if (needsWorkspace && !workspace) { setErr('Enter your workspace first.'); return; }
     try {
       const start = await api.post<{ mode: string; url: string; state: string }>(
-        `/auth/sso/${provider}/start`, { tenantSlug: needsWorkspace ? workspace : undefined }, false,
+        `/auth/sso/${provider}/start`, { tenantSlug: workspaceToSend }, false,
       );
       if (start.mode === 'mock') {
         const who = window.prompt('Mock SSO — sign in as (email or email|Name):');
@@ -107,7 +117,8 @@ export default function LoginPage() {
           <div className="f-group">
             <label className="f-label">{t('login.email')}</label>
             <input className="f-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com" autoComplete="username" required />
+              placeholder={process.env.NEXT_PUBLIC_EMAIL_HINT || 'you@company.com'}
+              autoComplete="username" required />
           </div>
           <div className="f-group">
             <label className="f-label">{t('login.password')}</label>
