@@ -7,6 +7,7 @@ import { useToast } from '@/lib/toast';
 import type { Booking } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
 import EditBookingModal from '@/components/EditBookingModal';
+import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
 
 const SWATCH: Record<string, string> = {
   APPROVED: 'available', COMPLETED: 'available', PENDING: 'pending',
@@ -75,7 +76,13 @@ export default function BookingsPage() {
     }
   }
 
-  if (loading) return <div className="empty">{t('common.loading')}</div>;
+  if (loading) {
+    return (
+      <div className="card">
+        <LoadingRegion label={t('common.loading')}><SkeletonRows rows={5} /></LoadingRegion>
+      </div>
+    );
+  }
   if (err) {
     return (
       <div className="err-box err-row">
@@ -92,7 +99,12 @@ export default function BookingsPage() {
         <Link href="/history" className="link">{t('bookings.see_history')}</Link>
       </div>
       {bookings.length === 0 ? (
-        <div className="empty">{t('bookings.empty')}</div>
+        <div className="empty">
+          {t('bookings.empty')}
+          <div className="empty-action">
+            <Link href="/book" className="btn btn-primary btn-sm">{t('common.book_now')}</Link>
+          </div>
+        </div>
       ) : (
         <table>
           <thead>

@@ -1,6 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+/* Loaded by next/font in app/layout.tsx — self-hosted, so there is no
+   serialised round trip out to Google before text can render. */
 
 :root {
+  /* next/font supplies --font-inter and --font-grotesk. */
+  --font-sans: var(--font-inter), system-ui, -apple-system, Segoe UI, sans-serif;
+  --font-display: var(--font-grotesk), var(--font-inter), system-ui, sans-serif;
   --cream: #FAF9F6; --surface: #FFFFFF; --ink: #20242B; --ink-soft: #6B7178;
   --teal: #0E6E55; --teal-dark: #0A5443; --teal-tint: #E4F2ED;
   --coral: #E4572E; --coral-tint: #FDEAE3; --amber: #F2A93B; --amber-tint: #FCF1DD;
@@ -9,8 +13,8 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
-body { font-family: 'Inter', system-ui, sans-serif; background: var(--cream); color: var(--ink); }
-h1, h2, h3 { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+body { font-family: var(--font-sans); background: var(--cream); color: var(--ink); }
+h1, h2, h3 { font-family: var(--font-display); }
 a { color: inherit; text-decoration: none; }
 
 .app { display: flex; min-height: 100vh; }
@@ -29,7 +33,7 @@ a { color: inherit; text-decoration: none; }
 .sidebar-backdrop { display: none; }
 .brand-mark { width: 34px; height: 34px; border-radius: 9px;
   background: linear-gradient(135deg, var(--coral), var(--amber)); flex-shrink: 0; }
-.brand-name { font-family: 'Space Grotesk'; font-weight: 600; font-size: 15px; }
+.brand-name { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
 .brand-sub { font-size: 11px; color: rgba(255,255,255,.6); }
 .admin-tag { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   background: var(--coral); color: #fff; padding: 2px 7px; border-radius: 100px; margin-left: 6px; }
@@ -68,11 +72,11 @@ nav.side { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .notif-menu-head { padding: 12px 16px; font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--line);
   display: flex; justify-content: space-between; align-items: center; }
 .notif-menu-head .link { font-size: 11px; font-weight: 600; color: var(--teal);
-  background: none; border: none; cursor: pointer; font-family: 'Inter'; }
+  background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
 .notif-list { max-height: 340px; overflow-y: auto; }
 .notif-item { display: flex; gap: 11px; padding: 12px 16px; cursor: pointer; align-items: flex-start;
   border-bottom: 1px solid #F2F1EC; width: 100%; text-align: left; background: none; border-left: none;
-  border-right: none; border-top: none; font-family: 'Inter'; }
+  border-right: none; border-top: none; font-family: var(--font-sans); }
 .notif-item:hover { background: #FAF9F6; }
 .notif-item:last-child { border-bottom: none; }
 .notif-item.unread { background: var(--teal-tint); }
@@ -91,7 +95,7 @@ nav.side { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .content { padding: 28px 32px 60px; overflow-y: auto; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px;
-  border-radius: 10px; border: none; font-family: 'Inter'; font-weight: 600; font-size: 13.5px; cursor: pointer;
+  border-radius: 10px; border: none; font-family: var(--font-sans); font-weight: 600; font-size: 13.5px; cursor: pointer;
   transition: transform .1s, background .15s, opacity .15s; }
 .btn:active { transform: scale(.97); } .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-primary { background: var(--teal); color: #fff; } .btn-primary:hover:not(:disabled) { background: var(--teal-dark); }
@@ -106,7 +110,7 @@ nav.side { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .section-head h3 { font-size: 16px; font-weight: 600; }
 .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-.stat .num { font-family: 'Space Grotesk'; font-size: 26px; font-weight: 700; }
+.stat .num { font-family: var(--font-display); font-size: 26px; font-weight: 700; }
 .stat .lbl { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 .page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .page-head h1 { font-size: 22px; }
@@ -140,7 +144,7 @@ tr:last-child td { border-bottom: none; }
 .f-group { margin-bottom: 14px; }
 .f-label { font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block; }
 .f-input, .f-select, .f-textarea { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line);
-  font-family: 'Inter'; font-size: 13px; color: var(--ink); background: #fff; }
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink); background: #fff; }
 .f-textarea { resize: vertical; min-height: 60px; }
 .f-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .f-check { display: flex; align-items: center; gap: 9px; font-size: 12.5px; margin-bottom: 12px; }
@@ -193,7 +197,7 @@ tr:last-child td { border-bottom: none; }
 .empty { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 40px 0; }
 .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.mono { font-family: 'Space Grotesk', monospace; font-size: 12px; }
+.mono { font-family: var(--font-display), monospace; font-size: 12px; }
 
 /* ---------- Tabs ---------- */
 .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -207,7 +211,7 @@ tr:last-child td { border-bottom: none; }
 
 /* ---------- Locations ---------- */
 .geo-cell { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
-.geo-coords { font-family: 'Space Grotesk', monospace; font-size: 11px; color: var(--ink-soft); }
+.geo-coords { font-family: var(--font-display), monospace; font-size: 11px; color: var(--ink-soft); }
 .check-row { display: flex; align-items: center; gap: 9px; font-size: 13px; margin: 4px 0 16px; cursor: pointer; }
 .check-row input { width: 15px; height: 15px; accent-color: var(--teal); }
 
@@ -273,7 +277,7 @@ tr:last-child td { border-bottom: none; }
 .plan-row:last-child { border-bottom: none; }
 .plan-row-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plan-row-pos { font-family: 'Space Grotesk', monospace; font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
+.plan-row-pos { font-family: var(--font-display), monospace; font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
 
 @media (max-width: 820px) {
   .plan-row { flex-wrap: wrap; }

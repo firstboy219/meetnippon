@@ -50,6 +50,63 @@
 | QR-2 | Public room page from the door QR; booking still requires sign-in | ✅ DONE (2026-07-21) |
 | GAP-1 | Mockup/BRD audit — Denah, meeting types, check-in, work location | ✅ DONE (2026-07-21) |
 | GAP-2 | Recurrence, schedule assistant, reminders (with delivery), recording opt-in | ✅ DONE (2026-07-21) |
+| UX-2 | Self-hosted fonts, focus-visible, skeletons, actionable empty states | ✅ DONE (2026-07-21) |
+
+---
+
+## UX-2 — UI/UX pass — DONE (2026-07-21)
+
+**189/189 tests pass.** With the feature list closed, this pass is polish. Measured before and after
+rather than changed on taste.
+
+### Fonts — the last P3 item, and the real one
+
+Both portals began `globals.css` with
+`@import url('https://fonts.googleapis.com/...')`, which is the worst available option: the browser
+must download the app stylesheet, parse it, *then* discover the import, *then* do a fresh DNS + TLS
+handshake to a third party, *then* fetch a second stylesheet, *then* start on the fonts. Measured on
+the live site beforehand:
+
+| | Before | After |
+|---|---|---|
+| Third-party requests | DNS + TLS to fonts.googleapis.com | **none** |
+| Extra stylesheet | 13,158 B, render-blocking | **eliminated** |
+| Font files referenced | **37** (every unicode range) | **2** (latin only) |
+| Font bytes | 74,648 B for the first 4 alone | **70,752 B total** |
+| When fonts start | after the app CSS is parsed | **preloaded, in parallel** |
+
+The byte count is similar — the win is the **critical path**: 2 requests instead of 38, no
+third-party handshake, and `rel="preload"` so the fonts are in flight while the CSS is still
+downloading. `display: swap` shows the fallback immediately instead of leaving invisible text.
+
+Font families are now `var(--font-sans)` / `var(--font-display)` rather than literal names, so the
+loader and the stylesheet cannot drift apart. **Note for future builds:** `next/font` fetches at
+*build* time, so the Docker build now needs outbound network — it already did for `npm install`.
+
+### Accessibility
+
+- **`:focus-visible` rings on every interactive element.** The portals style their own buttons, so
+  the browser's default outline was frequently invisible against them — keyboard users could not
+  tell where they were. Mouse users are unaffected; the ring inverts to white on the sidebar and on
+  the coloured hero/room banners where teal would vanish.
+- **`prefers-reduced-motion` respected** — the skeleton shimmer, spinners and transitions all stop
+  for users who have asked their OS for less motion.
+- Skeletons are `aria-hidden` and paired with a `role="status"` live region, because a shape conveys
+  nothing to a screen reader.
+
+### Loading and empty states
+
+`Loading…` on a blank page reads as *stuck*; a shape that matches what is coming reads as *nearly
+there*, and the page does not jump when the data lands. Applied to My Bookings and the room list.
+Empty states now offer the next step — an empty booking list links to Book, and a search with no
+matches offers to clear the filters, rather than stating the absence and stopping.
+
+### Viewport
+
+Both portals now declare a viewport and theme colour. The portal is used on phones held at a
+doorway, and without it mobile browsers render at desktop width and zoom out.
+
+---
 
 ---
 
@@ -873,7 +930,7 @@ Commit `3e7f830`. QA agent audited all 37 page/component files in both portals a
 
 **Design tokens:** audit found 100% parity with mockups (teal `#0E6E55`, coral `#E4572E`, Space Grotesk/Inter) — no drift, no changes needed.
 
-**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search, and **floor-plan image upload** (URLs work today; upload needs object storage). Also still open: Google Fonts via CSS `@import` → `next/font`. *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1. Admin office locations/geofence + floor plans — done, see LOC-1; the user-facing Denah view that consumes those plans is still open.)*
+**Deferred (P3, next wave):** user-portal mockup views still missing — **Denah** (floor plan); plus presence dropdown, WFH chip on hero, check-in button, room-detail panel, List/Denah toggle, booking-modal extras (recurrence, participants/schedule assistant, reminder chips, meeting-type, recording opt-in). Admin: dashboard approval queue with inline decisions, occupancy/ghost-booking deltas, resource-table search, and **floor-plan image upload** (URLs work today; upload needs object storage). *(Google Fonts `@import` → `next/font` — done, see UX-2.)* *(Per-tenant timezone — done, see TZ-1. Kalender, Riwayat and booking-list pagination — done, see CAL-1. Admin office locations/geofence + floor plans — done, see LOC-1; the user-facing Denah view that consumes those plans is still open.)*
 
 ---
 

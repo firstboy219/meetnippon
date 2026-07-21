@@ -181,6 +181,7 @@ const DICT: Dict = {
   'dash.quickbook': { en: '+ Quick book', id: '+ Pesan cepat' },
   'book.search': { en: 'Search rooms, floor, or facilities…', id: 'Cari ruang, lantai, atau fasilitas…' },
   'book.all': { en: 'All', id: 'Semua' },
+  'book.clear_filters': { en: 'Clear search and filters', id: 'Bersihkan pencarian & filter' },
   'book.room': { en: 'Meeting Room', id: 'Ruang Meeting' },
   'book.desk': { en: 'Desk', id: 'Desk' },
   'book.needs_approval': { en: 'Needs approval', id: 'Perlu persetujuan' },

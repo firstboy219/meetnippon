@@ -9,6 +9,7 @@ import type { Resource, Booking, Participant } from '@/lib/types';
 import { todayLocal, zonedToUtcIso, getTenantTz, tzLabel } from '@/lib/format';
 import Participants from '@/components/Participants';
 import { toWire } from '@/lib/participants';
+import { LoadingRegion, SkeletonCards } from '@/components/Skeleton';
 
 type Filter = 'ALL' | 'ROOM' | 'DESK';
 
@@ -51,8 +52,19 @@ export default function BookPage() {
           <span>{t('common.load_error')}</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={load}>{t('common.retry')}</button>
         </div>
+      ) : resources.length === 0 ? (
+        <LoadingRegion label={t('common.loading')}><SkeletonCards count={6} /></LoadingRegion>
       ) : shown.length === 0 ? (
-        <div className="empty">{t('book.none')}</div>
+        <div className="empty">
+          {t('book.none')}
+          {q ? (
+            <div className="empty-action">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setQ(''); setFilter('ALL'); }}>
+                {t('book.clear_filters')}
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <div className="grid grid-3">
           {shown.map((r) => {
