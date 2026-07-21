@@ -396,6 +396,43 @@ describe('booking core', () => {
     await expect(asEmp(() => booking.checkIn(other.id))).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('reports which invitees already have something in the slot', async () => {
+    // Availability is keyed on who the booking is *for*, so the clash has to
+    // be owned by the person being checked — approving something does not make
+    // an approver busy.
+    await prisma.booking.create({
+      data: {
+        tenantId: A, title: 'Appr own meeting', type: 'OFFLINE', resourceId: 'roomA3',
+        principalId: APPR, bookerId: APPR,
+        startTime: at(15, 30), endTime: at(16, 30), status: 'APPROVED',
+      },
+    });
+
+    const res: any = await asEmp(() => booking.participantAvailability(
+      ['appr@a.co', 'stranger@outside.com'],
+      iso(at(15, 45)), iso(at(16, 0)),
+    ));
+    expect(res.checked).toBe(1);
+
+    const appr = res.people.find((p: any) => p.email === 'appr@a.co');
+    expect(appr.status).toBe('busy');
+    expect(appr.busy).toHaveLength(1);
+    // it says *that* they are busy, never what the clashing meeting is
+    expect(JSON.stringify(appr)).not.toContain('Appr own meeting');
+
+    // someone outside the workspace has no calendar here — not "free"
+    const outsider = res.people.find((p: any) => p.email === 'stranger@outside.com');
+    expect(outsider.status).toBe('unknown');
+  });
+
+  it('reports a genuinely empty slot as free', async () => {
+    const res: any = await asEmp(() => booking.participantAvailability(
+      ['appr@a.co'], iso(at(4, 5)), iso(at(4, 25)),
+    ));
+    expect(res.people[0].status).toBe('free');
+    expect(res.people[0].busy).toEqual([]);
+  });
+
   it('does not leak bookings across tenants', async () => {
     const bInB: any = await runWithTenant(
       { tenantId: B, userId: EMP_B, role: 'EMPLOYEE' },

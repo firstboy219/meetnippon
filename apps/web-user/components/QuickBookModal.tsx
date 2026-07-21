@@ -4,8 +4,8 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
-import type { Booking, Participant } from '@/lib/types';
-import { getTenantTz, tzLabel, zonedToUtcIso } from '@/lib/format';
+import type { AvailabilityCheck, Booking, Participant } from '@/lib/types';
+import { fmtTime, getTenantTz, tzLabel, zonedToUtcIso } from '@/lib/format';
 import Participants from './Participants';
 import { toWire } from '@/lib/participants';
 
@@ -29,12 +29,18 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
   const { t } = useI18n();
   const { push } = useToast();
   const { user } = useAuth();
+  const features = user?.features ?? [];
   const [title, setTitle] = useState('');
   const [from, setFrom] = useState(start);
   const [duration, setDuration] = useState(60);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [type, setType] = useState<'OFFLINE' | 'ONLINE' | 'HYBRID'>('OFFLINE');
   const [meetingLink, setMeetingLink] = useState('');
+  const [repeat, setRepeat] = useState<'' | 'DAILY' | 'WEEKLY'>('');
+  const [repeatCount, setRepeatCount] = useState(4);
+  const [reminders, setReminders] = useState<number[]>([15]);
+  const [record, setRecord] = useState(false);
+  const [avail, setAvail] = useState<AvailabilityCheck | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -44,6 +50,25 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
   }, [onClose]);
 
   const to = addMinutes(from, duration);
+
+  /**
+   * Schedule assistant: check the invitees against the chosen slot.
+   * Debounced, because it re-runs on every time and guest-list change.
+   */
+  useEffect(() => {
+    const emails = participants.map((p) => p.email).filter(Boolean);
+    if (emails.length === 0) { setAvail(null); return; }
+    const id = setTimeout(() => {
+      api.post<AvailabilityCheck>('/bookings/participant-availability', {
+        emails,
+        startTime: zonedToUtcIso(day, from, getTenantTz()),
+        endTime: zonedToUtcIso(day, to, getTenantTz()),
+      }).then(setAvail).catch(() => setAvail(null));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [participants, day, from, to]);
+
+  const clashing = (avail?.people ?? []).filter((p) => p.status === 'busy');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,6 +84,9 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
         startTime: zonedToUtcIso(day, from, getTenantTz()),
         endTime: zonedToUtcIso(day, to, getTenantTz()),
         ...(participants.length ? { participants: toWire(participants), notify: true } : {}),
+        ...(repeat ? { recurrence: { freq: repeat, count: repeatCount } } : {}),
+        ...(reminders.length ? { reminders: reminders.map((m) => ({ offsetMinutes: m, channel: 'app' })) } : {}),
+        ...(record ? { recordingRequested: true } : {}),
       });
       push(res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed'), 'success');
       onBooked();
@@ -127,6 +155,76 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
         ) : null}
 
         <Participants value={participants} onChange={setParticipants} selfEmail={user?.email} />
+
+        {/* Schedule assistant — surfaced only when it has something to say. */}
+        {clashing.length ? (
+          <div className="warn-box">
+            <strong>{t('assist.clash_title')}</strong>
+            <ul className="assist-list">
+              {clashing.map((p) => (
+                <li key={p.email}>
+                  {p.fullName ?? p.email} — {t('assist.busy')} {p.busy.map((b) => `${fmtTime(b.startTime)}–${fmtTime(b.endTime)}`).join(', ')}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : avail && avail.checked > 0 ? (
+          <div className="info-box">{t('assist.all_free')}</div>
+        ) : null}
+
+        <details className="more-opts">
+          <summary>{t('modal.more_options')}</summary>
+
+          <div className="f-group" style={{ marginTop: 12 }}>
+            <label className="f-label">{t('modal.repeat')}</label>
+            <div className="row-actions">
+              {([['', 'once'], ['DAILY', 'daily'], ['WEEKLY', 'weekly']] as const).map(([v, k]) => (
+                <button key={k} type="button" className={`filter-pill ${repeat === v ? 'active' : ''}`}
+                  aria-pressed={repeat === v} onClick={() => setRepeat(v)}>
+                  {t(`modal.repeat_${k}`)}
+                </button>
+              ))}
+            </div>
+            {repeat ? (
+              <>
+                <div className="f-row2" style={{ marginTop: 10 }}>
+                  <div className="f-group" style={{ marginBottom: 0 }}>
+                    <label className="f-label">{t('modal.occurrences')}</label>
+                    <input className="f-input" type="number" min={2} max={52} value={repeatCount}
+                      onChange={(e) => setRepeatCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))} />
+                  </div>
+                </div>
+                {/* Every occurrence is validated against the room's rules, so a
+                    clash in week 3 stops the whole series rather than booking
+                    a partial one. */}
+                <div className="f-hint">{t('modal.repeat_hint')}</div>
+              </>
+            ) : null}
+          </div>
+
+          <div className="f-group">
+            <label className="f-label">{t('modal.remind_me')}</label>
+            <div className="row-actions">
+              {[10, 15, 30, 60].map((m) => (
+                <button key={m} type="button"
+                  className={`filter-pill ${reminders.includes(m) ? 'active' : ''}`}
+                  aria-pressed={reminders.includes(m)}
+                  onClick={() => setReminders((r) => r.includes(m) ? r.filter((x) => x !== m) : [...r, m].sort((a, b) => a - b))}>
+                  {m < 60 ? `${m} ${t('modal.min_before')}` : `1 ${t('modal.hour_before')}`}
+                </button>
+              ))}
+            </div>
+            <div className="f-hint">{reminders.length ? t('modal.remind_hint') : t('modal.remind_none')}</div>
+          </div>
+
+          {features.includes('recording') ? (
+            <label className="check-row">
+              <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} />
+              <span>{t('modal.record')}</span>
+            </label>
+          ) : null}
+          {record ? <div className="warn-box">{t('modal.record_consent')}</div> : null}
+        </details>
 
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>

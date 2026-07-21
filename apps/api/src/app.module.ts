@@ -29,6 +29,7 @@ import { DirectoryModule } from './directory/directory.module';
 import { PresenceModule } from './presence/presence.module';
 import { ProfileModule } from './profile/profile.module';
 import { PublicModule } from './public/public.module';
+import { ReminderModule } from './reminder/reminder.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
@@ -67,6 +68,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     PresenceModule,
     ProfileModule,
     PublicModule,
+    ReminderModule,
     UploadsModule,
     HealthModule,
   ],

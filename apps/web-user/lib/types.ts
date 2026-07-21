@@ -158,6 +158,20 @@ export interface Booking {
   invites?: InviteResult;
 }
 
+/**
+ * Schedule assistant. `unknown` is used for guests outside the workspace whose
+ * calendar we genuinely cannot see — never conflated with "free".
+ */
+export interface AvailabilityCheck {
+  checked: number;
+  people: {
+    email: string;
+    fullName: string | null;
+    status: 'free' | 'busy' | 'unknown';
+    busy: { startTime: string; endTime: string }[];
+  }[];
+}
+
 /** Today's work location. Coordinates are never stored — only this. */
 export interface WorkLocation {
   id?: string;

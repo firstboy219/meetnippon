@@ -462,6 +462,18 @@ tr:last-child td { border-bottom: none; }
   .sched-day { min-width: 120px; font-size: 13.5px; }
 }
 
+/* ---------- Booking extras (repeat / reminders / recording) ---------- */
+.more-opts { border: 1px solid var(--line); border-radius: 11px; padding: 0 14px;
+  margin-bottom: 14px; background: #FBFAF7; }
+.more-opts > summary { padding: 11px 0; cursor: pointer; font-size: 12.5px;
+  font-weight: 600; color: var(--teal); list-style: none; }
+.more-opts > summary::-webkit-details-marker { display: none; }
+.more-opts > summary::before { content: '▸ '; }
+.more-opts[open] > summary::before { content: '▾ '; }
+.more-opts[open] { padding-bottom: 6px; }
+.assist-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.assist-list li { font-size: 12px; line-height: 1.6; }
+
 /* ---------- Denah (floor plan) ---------- */
 .denah-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .denah-card { padding: 14px; }

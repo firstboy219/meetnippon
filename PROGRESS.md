@@ -49,6 +49,50 @@
 | BUG-1 | Fix: booking with participants rejected with 400 | ✅ FIXED (2026-07-21) |
 | QR-2 | Public room page from the door QR; booking still requires sign-in | ✅ DONE (2026-07-21) |
 | GAP-1 | Mockup/BRD audit — Denah, meeting types, check-in, work location | ✅ DONE (2026-07-21) |
+| GAP-2 | Recurrence, schedule assistant, reminders (with delivery), recording opt-in | ✅ DONE (2026-07-21) |
+
+---
+
+## GAP-2 — The last four BRD features — DONE (2026-07-21)
+
+**189/189 tests pass** (14 new). Migration `20260721153900_booking_reminders_sent`, applied
+additively (bookings 267→267).
+
+**Reminders were a facade and are now real.** `Booking.reminders` had been persisted since Phase 2,
+but **nothing ever read it** — no cron, no worker, no scheduler anywhere in the codebase. Someone
+setting "remind me 15 minutes before" got silence. Shipping the UI alone would have made the product
+lie, so this pass built the delivery first:
+
+- `ReminderService` ticks every 60s, scanning only bookings starting within 24h that have reminders.
+- A new `remindersSent` column records which offsets have fired. **Without it a per-minute dispatcher
+  would re-send every tick** — proven live: after the first delivery, `remindersSent` reads `[15]`
+  and a second tick 65s later left the count at 1.
+- A pass that is still running blocks the next one, so a slow tick cannot overlap and double-send.
+- A missed tick still delivers late rather than never; malformed entries (`"soon"`, `-5`, `0`, `{}`)
+  are skipped rather than throwing and killing the loop.
+- Deliberately an interval, not a queue: one indexed query a minute does not justify a broker on
+  this host. **Known limit — it assumes a single API instance.** Run two and reminders double-send;
+  the claim step is what would move into Redis first.
+
+**Schedule assistant (7.4.6)** — `POST /bookings/participant-availability`. Reports *that* an invitee
+is busy and when, never **what** the clashing meeting is; colleagues need enough to pick another
+slot, not each other's calendars. Someone outside the workspace returns `unknown`, never `free` —
+conflating "no calendar" with "available" is how double-bookings get made. Capped at 50 addresses so
+it cannot be turned into a bulk directory probe (**400** live at 60).
+
+**Recurrence (7.3.2)** — daily/weekly, 2–52 occurrences, using the existing DST-safe
+`generateOccurrences`. Verified live: 4 weekly occurrences landed on consecutive Sundays, and a
+series clashing on its **first** occurrence was refused **whole** — 409 with zero partial rows.
+
+**Recording opt-in (7.8)** — checkbox gated on the tenant's `recording` flag, with the
+participant-notification wording the BRD requires shown before it is saved.
+
+**Test premise corrected** — my first availability test asserted an approver was busy because they
+had approved a meeting at that time. Availability is keyed on `principalId`: approving something
+does not occupy you. The code was right; the test was wrong, and now creates a booking genuinely
+owned by that person.
+
+---
 
 ---
 

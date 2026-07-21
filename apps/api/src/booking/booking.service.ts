@@ -361,6 +361,68 @@ export class BookingService {
   }
 
   /**
+   * Schedule assistant (BRD 7.4.6): who among these people already has
+   * something in the proposed slot.
+   *
+   * Reports only *that* someone is busy and the clashing time — not what the
+   * clashing meeting is. Colleagues need enough to pick another slot; they do
+   * not need to read each other's calendars.
+   */
+  async participantAvailability(emails: string[], startTime: string, endTime: string) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (!(start < end)) throw new BadRequestException('End must be after start.');
+
+    const cleaned = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    if (cleaned.length === 0) return { checked: 0, people: [] };
+
+    const users = await this.prisma.scoped.user.findMany({
+      where: { email: { in: cleaned }, isActive: true },
+      select: { id: true, email: true, fullName: true },
+    });
+
+    const clashes = await this.prisma.scoped.booking.findMany({
+      where: {
+        principalId: { in: users.map((u) => u.id) },
+        status: { in: ACTIVE_STATES as any },
+        startTime: { lt: end },
+        endTime: { gt: start },
+      },
+      select: { principalId: true, startTime: true, endTime: true },
+      orderBy: { startTime: 'asc' },
+    });
+
+    const byUser = new Map<string, typeof clashes>();
+    for (const c of clashes) {
+      const l = byUser.get(c.principalId) ?? [];
+      l.push(c);
+      byUser.set(c.principalId, l);
+    }
+
+    const known = new Set(users.map((u) => u.email));
+    return {
+      checked: users.length,
+      people: [
+        ...users.map((u) => {
+          const busy = byUser.get(u.id) ?? [];
+          return {
+            email: u.email,
+            fullName: u.fullName,
+            // 'unknown' is honest for guests we cannot see a calendar for.
+            status: busy.length ? ('busy' as const) : ('free' as const),
+            busy: busy.map((b) => ({ startTime: b.startTime, endTime: b.endTime })),
+          };
+        }),
+        // External addresses have no calendar here; say so rather than
+        // implying they are free.
+        ...cleaned.filter((e) => !known.has(e)).map((email) => ({
+          email, fullName: null, status: 'unknown' as const, busy: [],
+        })),
+      ],
+    };
+  }
+
+  /**
    * Edit an existing booking. Re-runs the same policy gate as create, because
    * an edit can move a slot anywhere a create could have put it.
    */

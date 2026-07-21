@@ -15,6 +15,7 @@ import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { CancelBookingDto, CheckInDto } from './dto/cancel-booking.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+import { ParticipantAvailabilityDto } from './dto/participant-availability.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -29,6 +30,12 @@ export class BookingController {
   @Get()
   listMine(@Query() q: ListBookingsQueryDto) {
     return this.bookings.listMine(q);
+  }
+
+  /** Schedule assistant — who is already busy in the proposed slot. */
+  @Post('participant-availability')
+  participantAvailability(@Body() dto: ParticipantAvailabilityDto) {
+    return this.bookings.participantAvailability(dto.emails, dto.startTime, dto.endTime);
   }
 
   // NOTE: declared before ':id' so the literal path wins the route match.

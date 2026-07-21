@@ -416,7 +416,9 @@ model Booking {
   endTime      DateTime
   status       BookingStatus @default(PENDING)
   participants Json          @default("[]") // [{userId?,email,external:bool}]
-  reminders    Json          @default("[]") // [{offsetMinutes?,dailyAt?,channel}]
+  reminders    Json          @default("[]") // [{offsetMinutes,channel}]
+  /// Offsets already delivered, so a dispatcher tick cannot send twice.
+  remindersSent Json         @default("[]")
   recordingRequested Boolean @default(false)
   recurringGroupId String?
   checkInToken String?       @unique
