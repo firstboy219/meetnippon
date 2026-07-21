@@ -26,3 +26,6 @@ apps/api/prisma/*.db
 .DS_Store
 coverage/
 .turbo/
+
+# Runtime user uploads (bind-mounted volume), not source
+uploads/
