@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api, tokenStore } from './api';
 import { setTenantTz } from './format';
+import { applyBrandTheme } from './theme';
 import type { AuthUser, Branding } from './types';
 
 interface AuthCtx {
@@ -17,24 +18,31 @@ const Ctx = createContext<AuthCtx>({
   login: async () => {}, logout: () => {},
 });
 
-function applyTheme(b: Branding | null) {
-  if (!b) return;
-  const root = document.documentElement;
-  if (b.primaryColor) root.style.setProperty('--teal', b.primaryColor);
-  if (b.accentColor) root.style.setProperty('--coral', b.accentColor);
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [ready, setReady] = useState(false);
 
+  /**
+   * Sent authenticated when we have a token: on a shared-URL host the Host
+   * header carries no tenant, so an anonymous request cannot be themed at all.
+   */
+  const loadBranding = useCallback(async () => {
+    try {
+      const b = tokenStore.access
+        ? await api.get<Branding | { tenant: null }>('/tenant/branding')
+        : await api.publicGet<Branding | { tenant: null }>('/tenant/branding');
+      if (b && 'tenantId' in b) {
+        setTenantTz(b.timezone);
+        setBranding(b);
+        applyBrandTheme(b);
+      }
+    } catch { /* branding is best-effort — never block the app on it */ }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      try {
-        const b = await api.publicGet<Branding | { tenant: null }>('/tenant/branding');
-        if (b && 'tenantId' in b) { setTenantTz(b.timezone); setBranding(b); applyTheme(b); }
-      } catch { /* branding is best-effort */ }
+      await loadBranding();
       if (tokenStore.access) {
         try {
           const me = await api.get<AuthUser>('/auth/me');
@@ -45,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setReady(true);
     })();
-  }, []);
+  }, [loadBranding]);
 
   const login = useCallback(async (email: string, password: string, tenantSlug?: string) => {
     const res = await api.post<{ accessToken: string; refreshToken: string; user: AuthUser }>(
@@ -61,7 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setUser(res.user);
     }
-  }, []);
+    // Now that there is a token, branding can finally be resolved on a
+    // shared-URL host — otherwise the workspace stays unthemed until a reload.
+    await loadBranding();
+  }, [loadBranding]);
 
   const logout = useCallback(() => {
     tokenStore.clear();

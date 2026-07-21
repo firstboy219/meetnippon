@@ -36,9 +36,51 @@
 | UP-1 | Image upload (floor plans), verify gate, stray-data cleanup | ✅ DONE (2026-07-20) |
 | UX-1 | Booking flow: participants + invite confirmation, edit, post-book redirect | ✅ DONE (2026-07-20) |
 | SYNC-1 | Admin settings actually reach the user portal | ✅ DONE (2026-07-20) |
-| MAIL-1 | Outbound email service | ⚠️ BUILT & DEPLOYED — **blocked on a valid SMTP credential** |
+| MAIL-1 | Outbound email service | ✅ DONE — **delivering live** since 2026-07-21 |
 | MAIL-2 | SMTP configurable from the admin console (encrypted at rest) | ✅ DONE (2026-07-21) |
 | PAGE-1 | Pagination + filters for admin audit / users / bookings | ✅ DONE (2026-07-21) |
+| BRAND-1 | Branding actually reaches the user portal | ✅ DONE (2026-07-21) |
+
+---
+
+## BRAND-1 — Branding reaches the portal — DONE (2026-07-21)
+
+Owner reported that colours set in admin had no effect. Correct — and for **three** separate
+reasons. **146/146 tests pass** (5 new). Also: the owner supplied a working Gmail App Password,
+so **email now actually delivers** — `mail:sent … via smtp.gmail.com (tenant)` confirmed for both a
+test send and a real booking invitation.
+
+**1. The portal never received the branding at all.** `/tenant/branding` resolves the tenant from the
+**Host header**, and `meetnippon.cosger.online` is a shared URL with no subdomain, so it returned
+`{"tenant":null}` to everyone — the same trap TZ-1 hit with the timezone. It now falls back to the
+**authenticated** tenant when the host resolves nothing, and the portal requests it *with* its token.
+
+**2. Branding was never re-fetched after login.** On a shared URL the first (anonymous) request can
+never succeed, so even with fix 1 a fresh sign-in stayed unthemed until a manual reload. `login()`
+now reloads branding once a token exists.
+
+**3. Only two of the six colour variables were being set.** The stylesheet is built on families —
+the sidebar is `--teal-dark`, hovers and selected states are `--teal-tint`, badges are
+`--coral-tint` — but only `--teal` and `--coral` were overridden. A rebranded workspace came out
+half-changed: blue buttons on a still-green sidebar. `lib/theme.ts` now derives the whole palette
+from the two brand colours (darken 28% for the sidebar, lighten 88% for tints).
+
+**Contrast guard** — the sidebar paints its text on `--teal-dark`. A pale brand colour would leave
+white-on-white, so a new `--on-brand` variable flips to dark ink when the derived dark colour is
+still bright (BT.601 luminance > 150). Tested: default green, the tenant's blue and near-black all
+keep white text; `#ffe680` and `#ffffff` switch to dark.
+
+**Verified live** — a signed-in request returns the tenant's real `#0276f2`/`#dd4048`; setting
+purple/amber in admin is visible on the very next portal request; `--on-brand` is present in the
+shipped bundle. Hex parsing rejects junk (`red`, `#12`, `javascript:alert(1)`) so a malformed value
+leaves the defaults rather than writing garbage into the DOM.
+
+**Known limitation, by design** — on a shared URL the **login screen** still cannot be themed: before
+sign-in there is genuinely nothing identifying the workspace. Per-tenant login branding needs the
+wildcard-DNS subdomain mode (owner-gated). The admin console is likewise unthemed — it is the
+platform's own tool; branding it per tenant was not requested and is a separate decision.
+
+---
 
 ---
 
