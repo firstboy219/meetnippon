@@ -19,14 +19,17 @@ import { PolicyResolverService } from './policy/policy-resolver.service';
 import { DEFAULT_RULES, PolicyRules } from './policy/policy.types';
 import {
   Slot,
+  exceedsMaxAdvance,
   generateOccurrences,
+  minutesBetween,
   validateSlot,
+  withinBusinessHours,
 } from './booking.rules';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { addLocalDays, startOfDayInTz } from '../common/tz.util';
+import { addLocalDays, localDateKey, startOfDayInTz } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
 const ACTIVE_STATES = ['PENDING', 'APPROVED', 'WAITLIST'] as const;
@@ -163,6 +166,16 @@ export class BookingService {
     return count > 0;
   }
 
+  /** Throws when the resolved policy has an allowlist that excludes the user. */
+  private assertAllowed(rules: PolicyRules, principalId: string) {
+    const allow = rules.allowedUserIds ?? [];
+    if (allow.length > 0 && !allow.includes(principalId)) {
+      throw new ForbiddenException(
+        'This room is restricted; you are not on its allowed list.',
+      );
+    }
+  }
+
   private async createApprovalSteps(bookingId: string, approverIds: string[]) {
     if (approverIds.length === 0) {
       await this.prisma.scoped.approvalStep.create({
@@ -210,6 +223,11 @@ export class BookingService {
       ? await this.resolver.resolveForResource(resource)
       : DEFAULT_RULES;
 
+    // Room allowlist (tester feedback #3): checked on the principal — the
+    // person the room is booked *for* — so an admin booking on behalf of an
+    // allowed user passes, and booking on behalf of a blocked one does not.
+    this.assertAllowed(rules, principalId);
+
     if (
       !rules.allowExternalParticipants &&
       (dto.participants ?? []).some((p) => p.external)
@@ -223,9 +241,15 @@ export class BookingService {
     const base: Slot = { start: new Date(dto.startTime), end: new Date(dto.endTime) };
     const occurrences = generateOccurrences(base, dto.recurrence, tz);
 
+    // Beyond the booking horizon: refused by default, but the admin can elect
+    // (per policy) to accept it and route it through approval instead.
+    const overAdvance = occurrences.some((s) => exceedsMaxAdvance(s, rules, now));
+
     // 1) pure per-slot validation (duration / advance / business hours)
     for (const slot of occurrences) {
-      const err = validateSlot(slot, rules, now, tz);
+      const err = validateSlot(slot, rules, now, tz, {
+        allowOverAdvance: rules.overAdvanceRequiresApproval,
+      });
       if (err) throw new BadRequestException(err);
     }
 
@@ -260,7 +284,8 @@ export class BookingService {
     }
 
     // 3) persist
-    const status = rules.requiresApproval ? 'PENDING' : 'APPROVED';
+    const needsApproval = rules.requiresApproval || (overAdvance && rules.overAdvanceRequiresApproval);
+    const status = needsApproval ? 'PENDING' : 'APPROVED';
     const groupId = dto.recurrence ? nanoid(16) : null;
     const created: any[] = [];
     for (const slot of occurrences) {
@@ -283,7 +308,7 @@ export class BookingService {
           checkInToken: rules.checkInRequired ? nanoid(24) : null,
         } as any,
       });
-      if (rules.requiresApproval) {
+      if (needsApproval) {
         await this.createApprovalSteps(booking.id, rules.approverIds);
       }
       created.push(booking);
@@ -454,8 +479,17 @@ export class BookingService {
     if (movingTime && (dto.startTime === undefined || dto.endTime === undefined)) {
       throw new BadRequestException('Send startTime and endTime together.');
     }
-    if ((movingTime || movingRoom) && booking.startTime <= now) {
-      throw new BadRequestException('This booking has already started; its time cannot be changed.');
+    const started = booking.startTime <= now;
+    const startUnchanged =
+      dto.startTime === undefined ||
+      new Date(dto.startTime).getTime() === booking.startTime.getTime();
+    // A meeting under way can still be extended or cut short (tester feedback
+    // #4 — "change a running meeting"), but its start already happened and its
+    // room is already occupied, so neither of those can move any more.
+    if ((movingTime || movingRoom) && started && (movingRoom || !startUnchanged)) {
+      throw new BadRequestException(
+        'This booking has already started; only its end time can still be changed.',
+      );
     }
 
     const tz = await this.tenantTz();
@@ -480,8 +514,42 @@ export class BookingService {
       end: dto.endTime ? new Date(dto.endTime) : booking.endTime,
     };
 
-    if (movingTime || movingRoom) {
-      const err = validateSlot(slot, rules, now, tz);
+    // Moving into a room with an allowlist re-checks the booking's principal,
+    // same as create would.
+    if (movingRoom) this.assertAllowed(rules, booking.principalId);
+
+    if ((movingTime || movingRoom) && started) {
+      // In-progress: only the end is moving. validateSlot() would refuse a
+      // start in the past, so this path checks what still matters — the new
+      // end is in the future, the total stays within the duration cap, and
+      // any *extension* does not run into the next booking.
+      if (slot.end <= now) {
+        throw new BadRequestException('The new end time must be in the future.');
+      }
+      if (minutesBetween(slot.start, slot.end) > rules.maxDurationMinutes) {
+        throw new BadRequestException(
+          `Duration must not exceed ${rules.maxDurationMinutes} minutes.`,
+        );
+      }
+      if (!withinBusinessHours(slot, rules, tz)) {
+        throw new BadRequestException('Outside allowed business hours.');
+      }
+      if (
+        resource &&
+        slot.end > booking.endTime &&
+        await this.hasConflict(
+          resource.id,
+          { start: booking.endTime, end: slot.end },
+          rules.bufferMinutes,
+          id,
+        )
+      ) {
+        throw new ConflictException('The extension conflicts with the next booking.');
+      }
+    } else if (movingTime || movingRoom) {
+      const err = validateSlot(slot, rules, now, tz, {
+        allowOverAdvance: rules.overAdvanceRequiresApproval,
+      });
       if (err) throw new BadRequestException(err);
       if (resource && await this.hasConflict(resource.id, slot, rules.bufferMinutes, id)) {
         throw new ConflictException('Time slot conflicts with an existing booking.');
@@ -489,10 +557,17 @@ export class BookingService {
     }
 
     // Moving a booking into a room that requires approval — or moving an
-    // already-approved one to a new time — invalidates the decision that was
-    // made about the old slot, so it goes back through approval.
+    // already-approved one to a new time, or beyond the booking horizon when
+    // the admin routes that through approval — invalidates the decision that
+    // was made about the old slot, so it goes back through approval. An
+    // in-progress end-time tweak is exempt: a meeting cannot go back to
+    // PENDING while it is happening.
+    const movedBeyondHorizon =
+      rules.overAdvanceRequiresApproval && exceedsMaxAdvance(slot, rules, now);
     const needsReapproval =
-      rules.requiresApproval && (movingTime || movingRoom) && booking.status === 'APPROVED';
+      (rules.requiresApproval || movedBeyondHorizon) &&
+      (movingTime || movingRoom) && !started &&
+      booking.status === 'APPROVED';
 
     const updated = await this.prisma.scoped.booking.update({
       where: { id },
@@ -638,5 +713,91 @@ export class BookingService {
     });
 
     return { resourceId: q.resourceId, from, to, busy };
+  }
+
+  /**
+   * The start times actually open on a room for a given day and duration
+   * (tester feedback #5) — so the form can offer only what will succeed,
+   * instead of letting the user type a time and learn it clashes on submit.
+   *
+   * Everything is derived from the admin-set policy: business hours bound the
+   * grid, buffers widen the conflicts, and the booking horizon either cuts the
+   * day off or (when the admin routes over-horizon bookings through approval)
+   * marks the whole day as needing approval.
+   */
+  async freeSlots(resourceId: string, day: string, durationMinutes: number) {
+    const resource = await this.prisma.scoped.resource.findUnique({ where: { id: resourceId } });
+    if (!resource) throw new NotFoundException('Resource not found.');
+    if (resource.status !== 'ACTIVE') throw new BadRequestException('Resource is not active.');
+
+    const rules = await this.resolver.resolveForResource({
+      id: resource.id, category: resource.category,
+    });
+    const tz = await this.tenantTz();
+    const now = new Date();
+
+    if (durationMinutes < rules.minDurationMinutes || durationMinutes > rules.maxDurationMinutes) {
+      throw new BadRequestException(
+        `Duration must be between ${rules.minDurationMinutes} and ${rules.maxDurationMinutes} minutes.`,
+      );
+    }
+
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? new Date(`${day}T12:00:00.000Z`)
+      : new Date();
+    const dayStart = startOfDayInTz(base, tz);
+    const dayEnd = addLocalDays(dayStart, 1, tz);
+
+    // One query for the whole day; each candidate checks against it in memory.
+    const bufMs = rules.bufferMinutes * 60000;
+    const busy = (await this.prisma.scoped.booking.findMany({
+      where: {
+        resourceId,
+        status: { in: ACTIVE_STATES as any },
+        startTime: { lt: new Date(dayEnd.getTime() + bufMs) },
+        endTime: { gt: new Date(dayStart.getTime() - bufMs) },
+      },
+      select: { startTime: true, endTime: true },
+      orderBy: { startTime: 'asc' },
+    })).map((b) => ({
+      start: b.startTime.getTime() - bufMs,
+      end: b.endTime.getTime() + bufMs,
+    }));
+
+    const stepMs = 30 * 60000;
+    const durMs = durationMinutes * 60000;
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+
+    const slots: { startTime: string; endTime: string; label: string }[] = [];
+    let overAdvanceDay = false;
+    for (let t = dayStart.getTime(); t + durMs <= dayEnd.getTime(); t += stepMs) {
+      const slot: Slot = { start: new Date(t), end: new Date(t + durMs) };
+      if (slot.start <= now) continue; // the past is not on offer
+      if (busy.some((w) => t < w.end && t + durMs > w.start)) continue;
+      const err = validateSlot(slot, rules, now, tz, {
+        allowOverAdvance: rules.overAdvanceRequiresApproval,
+      });
+      if (err) continue;
+      if (exceedsMaxAdvance(slot, rules, now)) overAdvanceDay = true;
+      slots.push({
+        startTime: slot.start.toISOString(),
+        endTime: slot.end.toISOString(),
+        label: fmt.format(slot.start),
+      });
+    }
+
+    return {
+      resourceId,
+      day: localDateKey(dayStart, tz),
+      timezone: tz,
+      durationMinutes,
+      // The form disables anything not in this list; these two tell it why a
+      // day is empty or why every slot will land in an approval queue.
+      requiresApproval: rules.requiresApproval || overAdvanceDay,
+      maxAdvanceDays: rules.maxAdvanceDays,
+      slots,
+    };
   }
 }

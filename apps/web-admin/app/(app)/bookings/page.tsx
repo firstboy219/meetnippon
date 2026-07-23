@@ -9,7 +9,9 @@ import Pager from '@/components/Pager';
 const BADGE: Record<string, string> = {
   APPROVED: 'green', COMPLETED: 'green', PENDING: 'amber', WAITLIST: 'amber', REJECTED: 'red', CANCELLED: 'grey',
 };
-const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
+// NO_SHOW is not a booking status — it filters on the sweep's noShowAt stamp
+// (booked, ended, never checked in) per tester feedback #1.
+const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'NO_SHOW'];
 
 export default function AdminBookingsPage() {
   const { t } = useI18n();
@@ -29,7 +31,8 @@ export default function AdminBookingsPage() {
   const load = useCallback(() => {
     setErr(false); setLoading(true);
     const p = new URLSearchParams({ page: String(page), pageSize: '25' });
-    if (filter !== 'ALL') p.set('status', filter);
+    if (filter === 'NO_SHOW') p.set('noShow', 'true');
+    else if (filter !== 'ALL') p.set('status', filter);
     if (term) p.set('q', term);
     api.get<Page<AdminBooking>>(`/admin/bookings?${p}`)
       .then(setData).catch(() => setErr(true)).finally(() => setLoading(false));
@@ -60,26 +63,31 @@ export default function AdminBookingsPage() {
           {loading && !data ? <div className="empty">{t('common.loading')}</div> : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>{t('th.when')}</th><th>{t('th.title')}</th><th>{t('th.resource')}</th><th>{t('th.approvals')}</th><th>{t('th.status')}</th></tr></thead>
+                <thead><tr><th>{t('th.when')}</th><th>{t('th.title')}</th><th>{t('th.organiser')}</th><th>{t('th.resource')}</th><th>{t('th.usage')}</th><th>{t('th.status')}</th></tr></thead>
                 <tbody>
-                  {rows.map((b) => (
-                    <tr key={b.id}>
-                      <td>{fmtDateTime(b.startTime)}</td>
-                      <td style={{ fontWeight: 600 }}>{b.title}</td>
-                      <td>{b.resource?.name ?? '—'}</td>
-                      <td>
-                        {b.approvalSteps?.length ? (
-                          <div className="row-actions" style={{ flexWrap: 'wrap' }}>
-                            {b.approvalSteps.map((s, n) => (
-                              <span key={n} className={`badge ${BADGE[s.decision] ?? 'grey'}`}>{t(`status.${s.decision}`)}</span>
-                            ))}
-                          </div>
-                        ) : <span style={{ color: 'var(--ink-soft)' }}>—</span>}
-                      </td>
-                      <td><span className={`badge ${BADGE[b.status] ?? 'grey'}`}>{t(`status.${b.status}`)}</span></td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 ? <tr><td colSpan={5}><div className="empty">{t('book.empty')}</div></td></tr> : null}
+                  {rows.map((b) => {
+                    const ended = new Date(b.endTime) < new Date();
+                    return (
+                      <tr key={b.id}>
+                        <td>{fmtDateTime(b.startTime)}</td>
+                        <td style={{ fontWeight: 600 }}>{b.title}</td>
+                        <td>{b.principal?.fullName ?? '—'}</td>
+                        <td>{b.resource?.name ?? '—'}</td>
+                        <td>
+                          {b.noShowAt ? (
+                            <span className="badge red">{t('book.no_show')}</span>
+                          ) : b.checkedInAt ? (
+                            <span className="badge green">{t('book.checked_in')}</span>
+                          ) : ended && b.resource && b.status === 'APPROVED' ? (
+                            // Ended, room-backed, no check-in, sweep not yet run.
+                            <span className="badge grey">{t('book.no_checkin')}</span>
+                          ) : <span style={{ color: 'var(--ink-soft)' }}>—</span>}
+                        </td>
+                        <td><span className={`badge ${BADGE[b.status] ?? 'grey'}`}>{t(`status.${b.status}`)}</span></td>
+                      </tr>
+                    );
+                  })}
+                  {rows.length === 0 ? <tr><td colSpan={6}><div className="empty">{filter === 'NO_SHOW' ? t('book.no_show_empty') : t('book.empty')}</div></td></tr> : null}
                 </tbody>
               </table>
             </div>

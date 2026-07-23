@@ -4,12 +4,18 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
-import type { AvailabilityCheck, Booking, Participant } from '@/lib/types';
+import type { AvailabilityCheck, Booking, FreeSlots, Participant } from '@/lib/types';
 import { fmtTime, getTenantTz, tzLabel, zonedToUtcIso } from '@/lib/format';
 import Participants from './Participants';
 import { toWire } from '@/lib/participants';
 
 const DURATIONS = [30, 60, 90, 120];
+
+/** "HH:MM" -> minutes since midnight, for nearest-slot sorting. */
+function minOf(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
 
 /** end = start + minutes, as a wall-clock HH:MM (never rolls past 23:59). */
 function addMinutes(hhmm: string, minutes: number): string {
@@ -41,6 +47,7 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
   const [reminders, setReminders] = useState<number[]>([15]);
   const [record, setRecord] = useState(false);
   const [avail, setAvail] = useState<AvailabilityCheck | null>(null);
+  const [free, setFree] = useState<FreeSlots | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -69,6 +76,28 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
   }, [participants, day, from, to]);
 
   const clashing = (avail?.people ?? []).filter((p) => p.status === 'busy');
+
+  /**
+   * Room availability for the picked day+duration (tester feedback #5). The
+   * clicked slot usually is free — the lane showed a gap — but duration
+   * changes can run it into the next booking; this catches that before submit.
+   */
+  useEffect(() => {
+    if (type === 'ONLINE') { setFree(null); return; } // no room to check
+    const p = new URLSearchParams({ resourceId, day, durationMinutes: String(duration) });
+    api.get<FreeSlots>(`/bookings/free-slots?${p}`).then(setFree).catch(() => setFree(null));
+  }, [resourceId, day, duration, type]);
+
+  const startAvailable = !free || type === 'ONLINE'
+    ? null
+    : free.slots.some((s) => s.label === from);
+  /** Nearest open starts to what was clicked, as one-tap fixes. */
+  const suggestions = free && startAvailable === false
+    ? [...free.slots]
+      .sort((a, b) =>
+        Math.abs(minOf(a.label) - minOf(from)) - Math.abs(minOf(b.label) - minOf(from)))
+      .slice(0, 4)
+    : [];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -130,6 +159,20 @@ export default function QuickBookModal({ resourceId, resourceName, day, start, o
             </div>
           </div>
         </div>
+
+        {startAvailable === false ? (
+          <div className="warn-box">
+            {t('book.slot_taken')}
+            {suggestions.length ? (
+              <div className="dur-row" style={{ marginTop: 8 }}>
+                {suggestions.map((s) => (
+                  <button key={s.startTime} type="button" className="filter-pill"
+                    onClick={() => setFrom(s.label)}>{s.label}</button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="f-group">
           <label className="f-label">{t('modal.meeting_type')}</label>

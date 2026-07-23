@@ -41,6 +41,10 @@ export interface PublicPolicy {
   allowExternalParticipants: boolean;
   allowRecurring: boolean;
   checkInRequired: boolean;
+  /** The room has an admin-set allowlist. */
+  restricted: boolean;
+  /** Whether *this* user may book it — the allowlist itself is never sent. */
+  canBook: boolean;
 }
 
 export interface Resource {
@@ -95,7 +99,38 @@ export interface DayGrid {
       principalId?: string;
       bookerId?: string;
     })[];
+    restricted?: boolean;
+    canBook?: boolean;
   }[];
+}
+
+/** Open start times for a room/day/duration — feeds the booking form. */
+export interface FreeSlots {
+  resourceId: string;
+  day: string;
+  timezone: string;
+  durationMinutes: number;
+  /** True when picking any of these slots will land in an approval queue. */
+  requiresApproval: boolean;
+  maxAdvanceDays: number;
+  slots: { startTime: string; endTime: string; label: string }[];
+}
+
+/** A colleague's proposal to move a meeting; the author decides. */
+export interface ChangeRequest {
+  id: string;
+  proposedStartTime: string | null;
+  proposedEndTime: string | null;
+  note: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  decisionNote?: string | null;
+  decidedAt?: string | null;
+  createdAt: string;
+  booking: {
+    id: string; title: string; startTime: string; endTime: string;
+    status?: string; resource?: { name: string } | null;
+  };
+  requester?: { fullName: string; email: string };
 }
 
 /** One row of a room's day, as shown on the QR landing page. */

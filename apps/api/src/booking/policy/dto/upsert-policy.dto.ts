@@ -33,6 +33,7 @@ export class RulesDto {
   @IsOptional() @IsInt() @Min(1) maxDurationMinutes?: number;
   @IsOptional() @IsInt() @Min(0) minAdvanceMinutes?: number;
   @IsOptional() @IsInt() @Min(0) maxAdvanceDays?: number;
+  @IsOptional() @IsBoolean() overAdvanceRequiresApproval?: boolean;
   @IsOptional() @IsInt() @Min(0) bufferMinutes?: number;
 
   @IsOptional()
@@ -47,6 +48,7 @@ export class RulesDto {
   @IsOptional() @IsBoolean() allowRecurring?: boolean;
   @IsOptional() @IsBoolean() checkInRequired?: boolean;
   @IsOptional() @IsInt() @Min(0) autoReleaseMinutes?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) allowedUserIds?: string[];
 }
 
 export class UpsertPolicyDto {

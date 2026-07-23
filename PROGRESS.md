@@ -1097,6 +1097,57 @@ person doesn't "fix" it again. Correct pins beat a smoother load.
 Gate: 189/189, both portals build, bookings 267/267 unchanged. API container
 untouched this round (portal-only change), so the reminder dispatcher stayed up.
 
+### T5 — tester feedback batch: no-shows, horizon, room allowlists, change requests, free slots (2026-07-23)
+
+Five items from the pilot testers, plus the owner's standing rule: **nothing
+hardcoded — every knob lives on the admin Policies page.**
+
+1. **No-show report + user warning.** New `NoShowService` sweep (5-min interval,
+   same single-instance pattern and `REMINDERS_DISABLED` switch as reminders):
+   an APPROVED, room-backed booking that ends without a check-in gets `noShowAt`
+   stamped once, the owner warned once (in-app + email). Admin console: NO_SHOW
+   filter on Bookings plus organiser/usage columns. Check-in is the only usage
+   signal the system has, so "unused" = "never checked in" — said openly in the
+   code. Pre-feature bookings were backfilled silently (0 rows qualified, but
+   the guard ran before the first tick, deliberately: retroactive warning email
+   for a rule that did not exist would be unjust).
+2. **Booking horizon.** `maxAdvanceDays` default 90→31; nipsea's stored policy
+   (360, set for the Excel import) updated to 31. **New admin rule
+   `overAdvanceRequiresApproval`**: beyond the horizon is refused outright when
+   off, accepted-but-routed-through-approval when on (nipsea: on). Edits moving
+   a booking beyond the horizon trigger re-approval the same way.
+3. **Per-room allowlist** (`allowedUserIds` in ROOM policy rules). Enforced on
+   the booking *principal*, so delegate booking for an allowed user passes.
+   Room stays visible everywhere; the portal gets only `restricted`/`canBook`
+   verdicts — the allowlist itself never leaves the API. Policies modal grew a
+   room picker (was: paste a database id) and a searchable user checklist.
+4. **Change requests on others' meetings.** New `BookingChangeRequest` model +
+   service. Requester proposes times/note from the Room Schedule (click a
+   colleague's block); author decides from Approvals; an approved move is
+   applied via `BookingService.update()` — same conflict/policy gate as a
+   direct edit, author as acting user — and a move that no longer fits fails
+   loudly and stays PENDING rather than being marked approved-with-nothing-applied.
+   Also: a meeting already in progress can now have its **end** time changed
+   (extend/cut short) but never its start or room; re-approval is skipped for
+   that case because a meeting cannot go back to PENDING while it is happening.
+5. **Free slots in the booking form.** `GET /bookings/free-slots` computes the
+   open start times for room/day/duration from the admin policy (hours, buffer,
+   horizon, existing bookings). The Book modal now offers only those (chip
+   grid); QuickBook warns when a duration change collides and offers the
+   nearest open starts.
+
+Migration `20260723151235_no_show_and_change_requests` (pre-migration dump in
+server-side `backups/`, gitignored). **Gotcha for next time:** a new
+tenant-carrying model must also be added to `TENANT_SCOPED_MODELS` in
+`prisma/tenant-models.ts` — the isolation extension is an explicit allowlist,
+and the model's first `create` fails with "Argument `tenant` is missing" until
+it is listed. The failing test caught it.
+
+Gate: 206/206 (17 new), bookings 267/267. Live smoke: free slots drop a booked
+stretch; 40-days-out lands PENDING with one approval step; allowlisted room is
+403 for outsiders / 201 for listed users with no allowlist leak; change request
+round-trip moved a real booking and notified both sides.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

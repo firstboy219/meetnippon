@@ -34,7 +34,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
   useEffect(() => {
-    if (user) api.get<ApprovalStep[]>('/approvals').then((r) => setPending(r.length)).catch(() => {});
+    if (!user) return;
+    // The badge is "things waiting on me": booking approvals + colleagues'
+    // change requests on my meetings.
+    Promise.all([
+      api.get<ApprovalStep[]>('/approvals').catch(() => []),
+      api.get<unknown[]>('/change-requests/incoming').catch(() => []),
+    ]).then(([a, c]) => setPending(a.length + c.length));
   }, [user, path]);
 
   // Chat badge polls on its own timer: unread changes while you are on any

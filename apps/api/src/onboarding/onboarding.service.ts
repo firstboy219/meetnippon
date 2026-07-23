@@ -66,7 +66,7 @@ export class OnboardingService {
       });
       // Sensible starter defaults: a tenant-baseline booking policy.
       await this.prisma.bookingPolicy.create({
-        data: { tenantId: tenant.id, scope: 'TENANT', rules: { maxDurationMinutes: 240, maxAdvanceDays: 60 } as any },
+        data: { tenantId: tenant.id, scope: 'TENANT', rules: { maxDurationMinutes: 240, maxAdvanceDays: 31 } as any },
       });
       return { tenant, admin };
     });

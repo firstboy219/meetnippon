@@ -141,6 +141,7 @@ model Tenant {
   auditLogs      AuditLog[]
   externalApprovalTasks ExternalApprovalTask[]
   subdomainRedirects SubdomainRedirect[]
+  bookingChangeRequests BookingChangeRequest[]
 }
 
 model TenantDomain {
@@ -258,6 +259,7 @@ model User {
   notifications       Notification[]
   workLocationLogs    WorkLocationLog[]
   approvalSteps       ApprovalStep[]
+  changeRequestsMade  BookingChangeRequest[] @relation("cr_requester")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -423,17 +425,47 @@ model Booking {
   recurringGroupId String?
   checkInToken String?       @unique
   checkedInAt  DateTime?
+  /// Stamped by the no-show sweep when the booking ended without a check-in.
+  /// Doubles as the "warning already sent" marker so the sweep fires once.
+  noShowAt     DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   approvalSteps ApprovalStep[]
   recording     Recording?
   conversation  ChatConversation?
+  changeRequests BookingChangeRequest[]
 
   @@index([tenantId])
   @@index([tenantId, resourceId, startTime])
   @@index([tenantId, principalId])
   @@index([recurringGroupId])
+}
+
+/// A colleague's proposal to move someone else's meeting (tester feedback #4).
+/// The booking's author stays in charge: nothing changes on the calendar until
+/// they approve, at which point the move goes through the same policy gate as
+/// any edit.
+model BookingChangeRequest {
+  id                String           @id @default(cuid())
+  tenantId          String
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingId         String
+  booking           Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  requesterId       String
+  requester         User             @relation("cr_requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  proposedStartTime DateTime?
+  proposedEndTime   DateTime?
+  note              String?
+  status            ApprovalDecision @default(PENDING)
+  /// The author's reply when deciding.
+  decisionNote      String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, bookingId])
+  @@index([tenantId, requesterId])
 }
 
 model ApprovalStep {

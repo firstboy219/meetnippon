@@ -16,6 +16,7 @@ import { CancelBookingDto, CheckInDto } from './dto/cancel-booking.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { ParticipantAvailabilityDto } from './dto/participant-availability.dto';
+import { FreeSlotsQueryDto } from './dto/free-slots-query.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -42,6 +43,12 @@ export class BookingController {
   @Get('availability')
   availability(@Query() q: AvailabilityQueryDto) {
     return this.bookings.availability(q);
+  }
+
+  /** Open start times for a room/day/duration — feeds the booking form. */
+  @Get('free-slots')
+  freeSlots(@Query() q: FreeSlotsQueryDto) {
+    return this.bookings.freeSlots(q.resourceId, q.day, q.durationMinutes ?? 60);
   }
 
   @Get(':id')

@@ -42,6 +42,11 @@ export default function EditBookingModal({ booking, onClose, onSaved }: {
     start !== timeIn(booking.startTime) ||
     end !== timeIn(booking.endTime);
 
+  // A meeting under way can still be extended or ended early, but its start
+  // has already happened — the API enforces this; the form just says it.
+  const inProgress =
+    new Date(booking.startTime) <= new Date() && new Date(booking.endTime) > new Date();
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -84,19 +89,23 @@ export default function EditBookingModal({ booking, onClose, onSaved }: {
         </div>
         <div className="f-group">
           <label className="f-label">{t('modal.date')}</label>
-          <input className="f-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <input className="f-input" type="date" value={date} disabled={inProgress}
+            onChange={(e) => setDate(e.target.value)} required />
         </div>
         <div className="f-row2">
           <div className="f-group">
             <label className="f-label">{t('modal.start')}</label>
-            <input className="f-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} required />
+            <input className="f-input" type="time" value={start} disabled={inProgress}
+              onChange={(e) => setStart(e.target.value)} required />
           </div>
           <div className="f-group">
             <label className="f-label">{t('modal.end')}</label>
             <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
           </div>
         </div>
-        <div className="f-hint" style={{ marginBottom: 14 }}>{t('modal.tz_hint')} ({tzLabel()})</div>
+        <div className="f-hint" style={{ marginBottom: 14 }}>
+          {inProgress ? `${t('edit.in_progress')} · ` : ''}{t('modal.tz_hint')} ({tzLabel()})
+        </div>
 
         <Participants value={participants} onChange={setParticipants} selfEmail={user?.email} />
 

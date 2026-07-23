@@ -4,6 +4,7 @@ import { PolicyResolverService } from '../booking/policy/policy-resolver.service
 import { PolicyRules } from '../booking/policy/policy.types';
 import { addLocalDays, localDateKey, startOfDayInTz } from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
+import { getTenantStore } from '../tenant/tenant-context';
 
 export interface ResourceFilter {
   type?: 'ROOM' | 'DESK';
@@ -30,11 +31,20 @@ export interface PublicPolicy {
   allowExternalParticipants: boolean;
   allowRecurring: boolean;
   checkInRequired: boolean;
+  /** The room has an admin-set allowlist. */
+  restricted: boolean;
+  /** Whether the *caller* may book it. The allowlist itself is never sent. */
+  canBook: boolean;
 }
 
-function toPublic(r: PolicyRules): PublicPolicy {
-  const { approverIds, autoReleaseMinutes, ...rest } = r;
-  return rest;
+function toPublic(r: PolicyRules, callerId?: string): PublicPolicy {
+  const { approverIds, autoReleaseMinutes, allowedUserIds, ...rest } = r;
+  const restricted = (allowedUserIds ?? []).length > 0;
+  return {
+    ...rest,
+    restricted,
+    canBook: !restricted || (!!callerId && allowedUserIds.includes(callerId)),
+  };
 }
 
 /**
@@ -60,9 +70,10 @@ export class ResourceService {
     const policies = await this.resolver.resolveMany(
       resources.map((r) => ({ id: r.id, category: r.category })),
     );
+    const me = getTenantStore()?.userId as string | undefined;
     return resources.map((r) => ({
       ...r,
-      policy: toPublic(policies.get(r.id)!),
+      policy: toPublic(policies.get(r.id)!, me),
     }));
   }
 
@@ -101,7 +112,7 @@ export class ResourceService {
       id: resource.id,
       category: resource.category,
     });
-    return { ...resource, policy: toPublic(rules) };
+    return { ...resource, policy: toPublic(rules, getTenantStore()?.userId as string | undefined) };
   }
 
   /** Floors that actually have a plan image — the only ones Denah can draw. */
@@ -204,7 +215,7 @@ export class ResourceService {
           current,
           next,
           bookings: list,
-          policy: toPublic(policies.get(r.id)!),
+          policy: toPublic(policies.get(r.id)!, getTenantStore()?.userId as string | undefined),
         };
       }),
     };
@@ -226,6 +237,10 @@ export class ResourceService {
     const dayEnd = addLocalDays(dayStart, 1, tz);
 
     const resources = await this.listRaw({ ...(type ? { type } : {}) });
+    const policies = await this.resolver.resolveMany(
+      resources.map((r) => ({ id: r.id, category: r.category })),
+    );
+    const me = getTenantStore()?.userId as string | undefined;
     const bookings = await this.prisma.scoped.booking.findMany({
       where: {
         resourceId: { in: resources.map((r) => r.id) },
@@ -253,15 +268,22 @@ export class ResourceService {
       timezone: tz,
       dayStart: dayStart.toISOString(),
       dayEnd: dayEnd.toISOString(),
-      rooms: resources.map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        capacity: r.capacity,
-        category: r.category,
-        floor: (r as any).floor ?? null,
-        bookings: byResource.get(r.id) ?? [],
-      })),
+      rooms: resources.map((r) => {
+        const pub = toPublic(policies.get(r.id)!, me);
+        return {
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          capacity: r.capacity,
+          category: r.category,
+          floor: (r as any).floor ?? null,
+          bookings: byResource.get(r.id) ?? [],
+          // Just the verdict, so the schedule can grey out a lane the caller
+          // may not book without shipping the allowlist to every browser.
+          restricted: pub.restricted,
+          canBook: pub.canBook,
+        };
+      }),
     };
   }
 

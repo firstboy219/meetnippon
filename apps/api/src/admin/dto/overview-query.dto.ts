@@ -28,6 +28,10 @@ export class AdminBookingsQueryDto extends PageQueryDto {
   @IsOptional() @IsString() @MaxLength(120)
   q?: string;
 
+  /** 'true' narrows to bookings whose room went unused (no check-in). */
+  @IsOptional() @IsIn(['true'])
+  noShow?: string;
+
   @IsOptional() @IsISO8601()
   from?: string;
 

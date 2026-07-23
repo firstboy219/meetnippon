@@ -7,6 +7,7 @@ import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
 import QuickBookModal from '@/components/QuickBookModal';
+import RequestChangeModal from '@/components/RequestChangeModal';
 import type { Booking, DayGrid } from '@/lib/types';
 import { fmtDayLong, fmtTime, todayLocal, tzLabel } from '@/lib/format';
 
@@ -48,6 +49,9 @@ export default function SchedulePage() {
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<Booking | null>(null);
   const [quick, setQuick] = useState<{ roomId: string; roomName: string; start: string } | null>(null);
+  const [requesting, setRequesting] = useState<{
+    id: string; title: string; startTime: string; endTime: string; ownerName?: string | null;
+  } | null>(null);
   const nowRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(() => {
@@ -82,14 +86,20 @@ export default function SchedulePage() {
   const hours = Array.from({ length: DAY_END_H - DAY_START_H + 1 }, (_, i) => DAY_START_H + i);
 
   /** Click an empty stretch of a room's row -> book that room at that time. */
-  function onLaneClick(e: React.MouseEvent<HTMLDivElement>, roomId: string, roomName: string) {
+  function onLaneClick(
+    e: React.MouseEvent<HTMLDivElement>,
+    room: { id: string; name: string; canBook?: boolean },
+  ) {
+    // Admin-restricted room: visible, not bookable (the API refuses anyway;
+    // failing here is just the honest UI for it).
+    if (room.canBook === false) { push(t('sched.restricted'), 'error'); return; }
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
     const raw = DAY_START_H * 60 + pct * TOTAL_MIN;
     const snapped = Math.max(DAY_START_H * 60, Math.round(raw / SLOT_MIN) * SLOT_MIN);
     const hh = String(Math.floor(snapped / 60)).padStart(2, '0');
     const mm = String(snapped % 60).padStart(2, '0');
-    setQuick({ roomId, roomName, start: `${hh}:${mm}` });
+    setQuick({ roomId: room.id, roomName: room.name, start: `${hh}:${mm}` });
   }
 
   return (
@@ -140,14 +150,23 @@ export default function SchedulePage() {
               {rooms.map((room) => (
                 <div key={room.id} className="sched-row">
                   <div className="sched-room">
-                    <div className="sched-room-name">{room.name}</div>
+                    <div className="sched-room-name">
+                      {room.name}
+                      {room.canBook === false ? (
+                        <span className="sched-lock" title={t('sched.restricted')} aria-label={t('sched.restricted')}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="sched-room-sub">
                       {room.floor?.name ? `${room.floor.name} · ` : ''}{room.capacity} {room.type === 'DESK' ? t('room.seat') : t('room.people')}
                     </div>
                   </div>
-                  <div className="sched-lane" onClick={(e) => onLaneClick(e, room.id, room.name)}
-                    role="button" tabIndex={0} aria-label={`${room.name} — ${t('sched.click_to_book')}`}
-                    onKeyDown={(e) => { if (e.key === 'Enter') setQuick({ roomId: room.id, roomName: room.name, start: '09:00' }); }}>
+                  <div className={`sched-lane ${room.canBook === false ? 'locked' : ''}`}
+                    onClick={(e) => onLaneClick(e, room)}
+                    role="button" tabIndex={0}
+                    aria-label={`${room.name} — ${room.canBook === false ? t('sched.restricted') : t('sched.click_to_book')}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && room.canBook !== false) setQuick({ roomId: room.id, roomName: room.name, start: '09:00' }); }}>
                     {hours.slice(1).map((h) => (
                       <span key={h} className="sched-line" style={{ left: `${((h - DAY_START_H) * 60 / TOTAL_MIN) * 100}%` }} />
                     ))}
@@ -168,7 +187,15 @@ export default function SchedulePage() {
                           onClick={(ev) => {
                             ev.stopPropagation();   // do not also trigger "book this slot"
                             if (mine && new Date(b.endTime) > new Date()) setEditing(b as Booking);
-                            else push(`${b.title} · ${b.principal?.fullName ?? ''}`, 'success');
+                            else if (new Date(b.endTime) > new Date()) {
+                              // Someone else's meeting: propose a change and let
+                              // the author decide, instead of a dead-end toast.
+                              setRequesting({
+                                id: b.id, title: b.title,
+                                startTime: b.startTime, endTime: b.endTime,
+                                ownerName: b.principal?.fullName ?? null,
+                              });
+                            } else push(`${b.title} · ${b.principal?.fullName ?? ''}`, 'success');
                           }}>
                           <span className="sched-block-title">{b.title}</span>
                           <span className="sched-block-who">{b.principal?.fullName ?? ''}</span>
@@ -195,6 +222,10 @@ export default function SchedulePage() {
       {editing ? (
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
+      ) : null}
+      {requesting ? (
+        <RequestChangeModal booking={requesting} onClose={() => setRequesting(null)}
+          onSent={() => setRequesting(null)} />
       ) : null}
     </div>
   );

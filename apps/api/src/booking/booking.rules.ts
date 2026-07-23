@@ -74,11 +74,26 @@ export function withinBusinessHours(slot: Slot, rules: PolicyRules, tz = 'UTC'):
   return minuteOfDay(slot.start, tz) >= open && minuteOfDay(slot.end, tz) <= close;
 }
 
+/** True when the slot starts beyond the policy's booking horizon. */
+export function exceedsMaxAdvance(slot: Slot, rules: PolicyRules, now: Date): boolean {
+  return slot.start.getTime() - now.getTime() > rules.maxAdvanceDays * 24 * 60 * 60 * 1000;
+}
+
 /**
  * Validate a single slot against the resolved rules (excluding conflict &
  * per-user quota, which need the DB). Returns an error message or null.
+ *
+ * `allowOverAdvance` lets the caller accept a slot beyond the booking horizon —
+ * used when the admin has configured over-horizon bookings to go through
+ * approval instead of being refused.
  */
-export function validateSlot(slot: Slot, rules: PolicyRules, now: Date, tz = 'UTC'): string | null {
+export function validateSlot(
+  slot: Slot,
+  rules: PolicyRules,
+  now: Date,
+  tz = 'UTC',
+  opts: { allowOverAdvance?: boolean } = {},
+): string | null {
   if (!(slot.start instanceof Date) || isNaN(slot.start.getTime())) return 'Invalid start time.';
   if (!(slot.end instanceof Date) || isNaN(slot.end.getTime())) return 'Invalid end time.';
   if (slot.end <= slot.start) return 'End time must be after start time.';
@@ -95,8 +110,7 @@ export function validateSlot(slot: Slot, rules: PolicyRules, now: Date, tz = 'UT
   if (leadMinutes < rules.minAdvanceMinutes) {
     return `Must be booked at least ${rules.minAdvanceMinutes} minutes ahead.`;
   }
-  const maxAdvanceMs = rules.maxAdvanceDays * 24 * 60 * 60 * 1000;
-  if (slot.start.getTime() - now.getTime() > maxAdvanceMs) {
+  if (!opts.allowOverAdvance && exceedsMaxAdvance(slot, rules, now)) {
     return `Cannot book more than ${rules.maxAdvanceDays} days ahead.`;
   }
 

@@ -5,8 +5,8 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
-import type { Resource, Booking, Participant } from '@/lib/types';
-import { todayLocal, zonedToUtcIso, getTenantTz, tzLabel } from '@/lib/format';
+import type { Resource, Booking, FreeSlots, Participant } from '@/lib/types';
+import { todayLocal, getTenantTz, tzLabel } from '@/lib/format';
 import Participants from '@/components/Participants';
 import { toWire } from '@/lib/participants';
 import { LoadingRegion, SkeletonCards } from '@/components/Skeleton';
@@ -72,6 +72,9 @@ export default function BookPage() {
             // Straight from the policy engine. Guessing this from the category
             // name meant switching approval off in admin changed nothing here.
             const needsApproval = r.policy?.requiresApproval ?? false;
+            // Restricted rooms stay visible — people should see they exist —
+            // but the way in is closed unless the admin put you on the list.
+            const blocked = r.policy ? r.policy.canBook === false : false;
             return (
               <div key={r.id} className="card room-card">
                 <div className="room-thumb">{r.name}</div>
@@ -80,16 +83,22 @@ export default function BookPage() {
                     <div className="card-title">{r.name}</div>
                     <div className="card-sub">{loc || (r.type === 'DESK' ? 'Hot desk' : 'Room')} · {r.capacity} {r.type === 'DESK' ? 'seat' : 'ppl'}</div>
                   </div>
-                  <span className={`swatch ${needsApproval ? 'pending' : 'available'}`}>
-                    <span className="dot" />{needsApproval ? t('book.needs_approval') : t('book.available')}
+                  <span className={`swatch ${blocked ? 'maintenance' : needsApproval ? 'pending' : 'available'}`}>
+                    <span className="dot" />{blocked ? t('book.restricted') : needsApproval ? t('book.needs_approval') : t('book.available')}
                   </span>
                 </div>
                 {r.facilities?.length ? (
                   <div className="room-facil">{r.facilities.slice(0, 4).map((f) => <span key={f} className="facil-tag">{f}</span>)}</div>
                 ) : null}
-                <button className={`btn ${needsApproval ? 'btn-ghost' : 'btn-primary'}`} onClick={() => setActive(r)}>
-                  {needsApproval ? t('common.request_booking') : t('common.book_now')}
-                </button>
+                {blocked ? (
+                  <button className="btn btn-ghost" disabled title={t('book.restricted_hint')}>
+                    {t('book.restricted')}
+                  </button>
+                ) : (
+                  <button className={`btn ${needsApproval ? 'btn-ghost' : 'btn-primary'}`} onClick={() => setActive(r)}>
+                    {needsApproval ? t('common.request_booking') : t('common.book_now')}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -110,6 +119,8 @@ export default function BookPage() {
   );
 }
 
+const DURATIONS = [30, 60, 90, 120];
+
 function BookingModal({ resource, onClose, onBooked }: {
   resource: Resource; onClose: () => void; onBooked: (msg: string, dayKey: string) => void;
 }) {
@@ -118,14 +129,31 @@ function BookingModal({ resource, onClose, onBooked }: {
   const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(todayLocal());
-  const [start, setStart] = useState('09:00');
-  const [end, setEnd] = useState('10:00');
+  const [duration, setDuration] = useState(60);
+  // Only what the policy engine says is open is offered (tester feedback #5):
+  // the server computes the day's free starts, the form renders exactly those.
+  const [slots, setSlots] = useState<FreeSlots | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+  const [picked, setPicked] = useState<string | null>(null); // slot startTime ISO
   const [participants, setParticipants] = useState<Participant[]>([]);
   // The invite step is a real decision, so it gets its own screen rather than
   // a checkbox buried under the fold.
   const [step, setStep] = useState<'form' | 'confirm'>('form');
   const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSlotsLoading(true);
+    const p = new URLSearchParams({ resourceId: resource.id, day: date, durationMinutes: String(duration) });
+    api.get<FreeSlots>(`/bookings/free-slots?${p}`)
+      .then((r) => {
+        setSlots(r);
+        // Keep the choice across a duration change when it is still open.
+        setPicked((prev) => r.slots.some((s) => s.startTime === prev) ? prev : null);
+      })
+      .catch(() => setSlots(null))
+      .finally(() => setSlotsLoading(false));
+  }, [resource.id, date, duration]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -141,18 +169,23 @@ function BookingModal({ resource, onClose, onBooked }: {
 
   function next(e: React.FormEvent) {
     e.preventDefault();
+    if (!picked) { push(t('book.pick_slot'), 'error'); return; }
     if (participants.length > 0) { setStep('confirm'); return; }
     void submit();
   }
 
   async function submit() {
+    const slot = slots?.slots.find((s) => s.startTime === picked);
+    if (!slot) { push(t('book.pick_slot'), 'error'); setStep('form'); return; }
     setBusy(true);
     try {
       const res = await api.post<Booking>('/bookings', {
         title,
         resourceId: resource.id,
-        startTime: zonedToUtcIso(date, start, getTenantTz()),
-        endTime: zonedToUtcIso(date, end, getTenantTz()),
+        // The slot came from the server already as instants — no client-side
+        // timezone arithmetic to get wrong.
+        startTime: slot.startTime,
+        endTime: slot.endTime,
         // toWire strips display-only fields; the API rejects unknown properties.
         ...(participants.length ? { participants: toWire(participants), notify } : {}),
       });
@@ -231,19 +264,52 @@ function BookingModal({ resource, onClose, onBooked }: {
           <label className="f-label">{t('modal.title')}</label>
           <input className="f-input" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={t('modal.title_ph')} />
         </div>
-        <div className="f-group">
-          <label className="f-label">{t('modal.date')}</label>
-          <input className="f-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-        </div>
         <div className="f-row2">
           <div className="f-group">
-            <label className="f-label">{t('modal.start')}</label>
-            <input className="f-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} required />
+            <label className="f-label">{t('modal.date')}</label>
+            <input className="f-input" type="date" value={date} min={todayLocal()}
+              onChange={(e) => setDate(e.target.value)} required />
           </div>
           <div className="f-group">
-            <label className="f-label">{t('modal.end')}</label>
-            <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
+            <label className="f-label">{t('sched.duration')}</label>
+            <div className="dur-row">
+              {DURATIONS.filter((d) =>
+                (!policy || (d >= policy.minDurationMinutes && d <= policy.maxDurationMinutes)),
+              ).map((d) => (
+                <button key={d} type="button" className={`filter-pill ${duration === d ? 'active' : ''}`}
+                  aria-pressed={duration === d} onClick={() => setDuration(d)}>
+                  {d < 60 ? `${d}m` : d % 60 === 0 ? `${d / 60}h` : `${Math.floor(d / 60)}h${d % 60}`}
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        <div className="f-group">
+          <label className="f-label">{t('book.slots_label')}</label>
+          {slotsLoading ? (
+            <div className="f-hint">{t('common.loading')}</div>
+          ) : !slots ? (
+            <div className="warn-box">{t('common.load_error')}</div>
+          ) : slots.slots.length === 0 ? (
+            <div className="warn-box">{t('book.no_slots')}</div>
+          ) : (
+            <>
+              <div className="slot-grid" role="listbox" aria-label={t('book.slots_label')}>
+                {slots.slots.map((s) => (
+                  <button key={s.startTime} type="button" role="option"
+                    aria-selected={picked === s.startTime}
+                    className={`slot-chip ${picked === s.startTime ? 'active' : ''}`}
+                    onClick={() => setPicked(s.startTime)}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              {slots.requiresApproval ? (
+                <div className="f-hint">{t('book.slots_approval')}</div>
+              ) : null}
+            </>
+          )}
         </div>
         <div className="f-hint" style={{ marginBottom: 14 }}>
           {t('modal.tz_hint')} ({tzLabel(getTenantTz())})

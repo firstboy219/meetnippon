@@ -25,6 +25,8 @@ export class AdminOverviewController {
     const where: Prisma.BookingWhereInput = {
       ...(q.status ? { status: q.status as any } : {}),
       ...(q.q ? { title: { contains: q.q, mode: 'insensitive' as const } } : {}),
+      // The no-show report (tester feedback #1): booked, ended, never checked in.
+      ...(q.noShow === 'true' ? { noShowAt: { not: null } } : {}),
       ...(q.from || q.to
         ? {
           startTime: {
@@ -44,6 +46,7 @@ export class AdminOverviewController {
         include: {
           resource: { select: { name: true, type: true } },
           approvalSteps: { select: { decision: true, level: true } },
+          principal: { select: { fullName: true, email: true } },
         },
       }),
       this.prisma.scoped.booking.count({ where }),

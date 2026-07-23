@@ -23,6 +23,12 @@ export interface PolicyRules {
   minAdvanceMinutes: number;
   /** cannot book further than this many days ahead */
   maxAdvanceDays: number;
+  /**
+   * What happens beyond maxAdvanceDays: false = refuse outright;
+   * true = accept, but route through approval regardless of requiresApproval.
+   * Both knobs are admin-set on the policies page — nothing here is fixed.
+   */
+  overAdvanceRequiresApproval: boolean;
   /** required empty gap before & after each booking on the same resource */
   bufferMinutes: number;
   businessHours: BusinessHours;
@@ -36,6 +42,12 @@ export interface PolicyRules {
   checkInRequired: boolean;
   /** release the slot if not checked-in within N min of start (0 = never) */
   autoReleaseMinutes: number;
+  /**
+   * Who may book this resource (tester feedback #3). Empty = everyone.
+   * Enforced on the booking's principal; the room stays visible to everyone
+   * so people can still see it exists and who to ask.
+   */
+  allowedUserIds: string[];
 }
 
 /** Tenant-level safe defaults applied beneath every resolved policy. */
@@ -43,7 +55,11 @@ export const DEFAULT_RULES: PolicyRules = {
   minDurationMinutes: 15,
   maxDurationMinutes: 480,
   minAdvanceMinutes: 0,
-  maxAdvanceDays: 90,
+  // One month, per tester feedback #2 — a horizon longer than that fills the
+  // calendar with placeholders nobody honours. A default only: the admin
+  // policies page overrides it per tenant/category/room.
+  maxAdvanceDays: 31,
+  overAdvanceRequiresApproval: false,
   bufferMinutes: 0,
   businessHours: { start: '00:00', end: '23:59', days: [1, 2, 3, 4, 5, 6, 7] },
   requiresApproval: false,
@@ -53,6 +69,7 @@ export const DEFAULT_RULES: PolicyRules = {
   allowRecurring: true,
   checkInRequired: false,
   autoReleaseMinutes: 0,
+  allowedUserIds: [],
 };
 
 /** Only keys present (not undefined) in an override are applied. */

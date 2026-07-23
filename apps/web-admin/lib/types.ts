@@ -100,6 +100,10 @@ export interface AdminBooking {
   id: string; title: string; status: string; startTime: string; endTime: string;
   resource?: { name: string; type: string } | null;
   approvalSteps?: { decision: string; level: number }[];
+  principal?: { fullName: string; email: string } | null;
+  checkedInAt?: string | null;
+  /** Set by the sweep when the booking ended without a check-in. */
+  noShowAt?: string | null;
 }
 
 export interface AuditRow {
