@@ -1231,6 +1231,33 @@ Self is never suggested. Gate: 211/211 (2 new: frequency ranking + internal
 name resolution + self-exclusion). Live smoke on nipsea: an external guest and
 a colleague both appeared after one booking; the caller stayed excluded.
 
+### T9 — UX regression pass (browser) + end-time grid fix (2026-07-24)
+
+Ran a frontend/UX regression by driving the live user portal in a browser.
+Verified working: grouped sidebar nav, tenant brand colour applied throughout,
+dashboard (welcome/stats/upcoming/presence), Book page cards, the unified
+MeetingComposer (title, date, **manual duration input**, meeting-type toggle +
+Online hint + **meeting-link field**, ONLINE showing full-day starts vs a room's
+gapped starts), **the selected-start chip is now visibly brand-blue** (the
+reported white-on-white bug, confirmed fixed), **available end times with
+duration sub-labels**, Room Schedule timeline, and the Approvals page's
+"Change requests on my meetings" section with clean empty states.
+
+**Defect found and fixed:** end-time options were stepped from `start + minDuration`
+(15 min) so they landed off the :00/:30 grid — `07:15, 07:45, 08:15…` — meaning
+the natural `08:00` end of the default 1-hour duration was not selectable and no
+end chip highlighted. `endOptions` now snaps to the same grid anchor as the
+starts (first grid point satisfying the minimum, up to the window end), and
+always includes the exact end of the chosen duration so an off-grid value (45m
+or a manual duration) stays selectable. Re-verified in-browser: picking 07:00
+now offers 07:30 / **08:00 (highlighted)** / 08:30.
+
+Minor UX note (not changed): the composer's start and end grids each have their
+own inner scrollbar inside the scrollable modal — functional but slightly busy;
+candidate for a later polish.
+
+Gate: web-user builds; 211/211 unchanged (client-only change).
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

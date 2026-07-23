@@ -128,18 +128,24 @@ export default function MeetingComposer({
     return out;
   }, [windows, anchor, stepMs, durMs, nowMs]);
 
-  // End options for the chosen start: every step from start+min up to the end
-  // of the window the start sits in, capped at the max duration.
+  // End options for the chosen start: snapped to the same :00/:30 grid as the
+  // starts (so a 1-hour default lands on a round 08:00, not 07:15), from the
+  // first grid point that satisfies the minimum duration up to the window end,
+  // capped at the max. The exact end for the chosen duration is always included
+  // too, so an off-grid duration (45m, or a manual value) stays selectable.
   const endOptions = useMemo(() => {
     if (pickedStart == null) return [] as number[];
     const w = windows.find((x) => pickedStart >= x.s && pickedStart < x.e);
     if (!w) return [];
-    const out: number[] = [];
-    for (let e = pickedStart + minDur * 60000; e <= w.e && e - pickedStart <= maxDur * 60000; e += stepMs) {
-      out.push(e);
+    const set = new Set<number>();
+    let e = anchor + Math.ceil((pickedStart + minDur * 60000 - anchor) / stepMs) * stepMs;
+    for (; e <= w.e && e - pickedStart <= maxDur * 60000; e += stepMs) set.add(e);
+    const exact = pickedStart + durMs;
+    if (exact > pickedStart && exact <= w.e && durMs >= minDur * 60000 && durMs <= maxDur * 60000) {
+      set.add(exact);
     }
-    return out;
-  }, [pickedStart, windows, minDur, maxDur, stepMs]);
+    return [...set].sort((a, b) => a - b);
+  }, [pickedStart, windows, minDur, maxDur, stepMs, anchor, durMs]);
 
   // Keep the picked start valid as duration/type/day change; drop it otherwise.
   useEffect(() => {
