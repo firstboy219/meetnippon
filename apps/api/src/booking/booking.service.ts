@@ -29,7 +29,14 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { addLocalDays, localDateKey, startOfDayInTz } from '../common/tz.util';
+import {
+  addLocalDays,
+  isoWeekdayInTz,
+  localDateKey,
+  startOfDayInTz,
+  tzOffsetMs,
+  zonedParts,
+} from '../common/tz.util';
 import { tenantTimezone } from '../common/tenant-tz';
 
 const ACTIVE_STATES = ['PENDING', 'APPROVED', 'WAITLIST'] as const;
@@ -715,17 +722,21 @@ export class BookingService {
     return { resourceId: q.resourceId, from, to, busy };
   }
 
+  /** The step the booking grid snaps to, in minutes. */
+  private static readonly SLOT_STEP_MIN = 30;
+
   /**
-   * The start times actually open on a room for a given day and duration
-   * (tester feedback #5) — so the form can offer only what will succeed,
-   * instead of letting the user type a time and learn it clashes on submit.
+   * Contiguous windows a room is actually free on a given day — the primitive
+   * the booking form derives BOTH start and end options from (so a user can
+   * pick a start and then see how far it can run), with a manual duration.
    *
-   * Everything is derived from the admin-set policy: business hours bound the
-   * grid, buffers widen the conflicts, and the booking horizon either cuts the
-   * day off or (when the admin routes over-horizon bookings through approval)
-   * marks the whole day as needing approval.
+   * Everything comes from the admin-set policy: business hours bound the day,
+   * buffers widen each existing booking, min-advance trims the near edge, and
+   * the horizon trims the far edge — unless the admin routes over-horizon
+   * bookings through approval, in which case the far edge stays and the day is
+   * flagged as needing approval instead.
    */
-  async freeSlots(resourceId: string, day: string, durationMinutes: number) {
+  async freeWindows(resourceId: string, day: string) {
     const resource = await this.prisma.scoped.resource.findUnique({ where: { id: resourceId } });
     if (!resource) throw new NotFoundException('Resource not found.');
     if (resource.status !== 'ACTIVE') throw new BadRequestException('Resource is not active.');
@@ -736,21 +747,41 @@ export class BookingService {
     const tz = await this.tenantTz();
     const now = new Date();
 
-    if (durationMinutes < rules.minDurationMinutes || durationMinutes > rules.maxDurationMinutes) {
-      throw new BadRequestException(
-        `Duration must be between ${rules.minDurationMinutes} and ${rules.maxDurationMinutes} minutes.`,
-      );
-    }
-
     const base = /^\d{4}-\d{2}-\d{2}$/.test(day)
       ? new Date(`${day}T12:00:00.000Z`)
       : new Date();
     const dayStart = startOfDayInTz(base, tz);
     const dayEnd = addLocalDays(dayStart, 1, tz);
 
-    // One query for the whole day; each candidate checks against it in memory.
+    // Local wall-clock minutes-past-midnight -> real instant, DST-safe (same
+    // two-pass correction as startOfDayInTz).
+    const wall = (minutes: number): number => {
+      const p = zonedParts(dayStart, tz);
+      const target = Date.UTC(p.year, p.month - 1, p.day, 0, minutes);
+      const guess = new Date(target - tzOffsetMs(dayStart, tz));
+      return target - tzOffsetMs(guess, tz);
+    };
+    const parseHHMM = (s: string) => {
+      const [h, m] = s.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const bh = rules.businessHours ?? { start: '00:00', end: '23:59', days: [1, 2, 3, 4, 5, 6, 7] };
+    const open = bh.days.includes(isoWeekdayInTz(new Date(dayStart.getTime() + 12 * 3600_000), tz));
+
+    const minMs = rules.minDurationMinutes * 60000;
+    const horizonMs = now.getTime() + rules.maxAdvanceDays * 86400_000;
+    // Near edge: must be in the future and past the min-advance lead.
+    // Far edge: business close, trimmed to the horizon unless approval covers it.
+    let segStart = Math.max(wall(parseHHMM(bh.start)), now.getTime() + rules.minAdvanceMinutes * 60000);
+    let segEnd = wall(parseHHMM(bh.end));
+    if (!rules.overAdvanceRequiresApproval) segEnd = Math.min(segEnd, horizonMs);
+    // Whole day past the horizon while approval covers it → still bookable, but
+    // every slot will queue for approval.
+    const overHorizon = rules.overAdvanceRequiresApproval && wall(parseHHMM(bh.end)) > horizonMs;
+
     const bufMs = rules.bufferMinutes * 60000;
-    const busy = (await this.prisma.scoped.booking.findMany({
+    const busyRows = await this.prisma.scoped.booking.findMany({
       where: {
         resourceId,
         status: { in: ACTIVE_STATES as any },
@@ -759,44 +790,102 @@ export class BookingService {
       },
       select: { startTime: true, endTime: true },
       orderBy: { startTime: 'asc' },
-    })).map((b) => ({
-      start: b.startTime.getTime() - bufMs,
-      end: b.endTime.getTime() + bufMs,
-    }));
-
-    const stepMs = 30 * 60000;
-    const durMs = durationMinutes * 60000;
-    const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
     });
+    // Buffer-pad then merge overlapping busy stretches into disjoint intervals.
+    const merged: { start: number; end: number }[] = [];
+    for (const b of busyRows) {
+      const s = b.startTime.getTime() - bufMs;
+      const e = b.endTime.getTime() + bufMs;
+      const last = merged[merged.length - 1];
+      if (last && s <= last.end) last.end = Math.max(last.end, e);
+      else merged.push({ start: s, end: e });
+    }
 
-    const slots: { startTime: string; endTime: string; label: string }[] = [];
-    let overAdvanceDay = false;
-    for (let t = dayStart.getTime(); t + durMs <= dayEnd.getTime(); t += stepMs) {
-      const slot: Slot = { start: new Date(t), end: new Date(t + durMs) };
-      if (slot.start <= now) continue; // the past is not on offer
-      if (busy.some((w) => t < w.end && t + durMs > w.start)) continue;
-      const err = validateSlot(slot, rules, now, tz, {
-        allowOverAdvance: rules.overAdvanceRequiresApproval,
-      });
-      if (err) continue;
-      if (exceedsMaxAdvance(slot, rules, now)) overAdvanceDay = true;
-      slots.push({
-        startTime: slot.start.toISOString(),
-        endTime: slot.end.toISOString(),
-        label: fmt.format(slot.start),
-      });
+    // Free = [segStart, segEnd] minus busy, each piece long enough to hold the
+    // shortest allowed meeting.
+    const windows: { start: string; end: string }[] = [];
+    if (open && segEnd - segStart >= minMs) {
+      let cursor = segStart;
+      for (const b of merged) {
+        if (b.end <= cursor) continue;
+        if (b.start >= segEnd) break;
+        const gapEnd = Math.min(b.start, segEnd);
+        if (gapEnd - cursor >= minMs) {
+          windows.push({ start: new Date(cursor).toISOString(), end: new Date(gapEnd).toISOString() });
+        }
+        cursor = Math.max(cursor, b.end);
+        if (cursor >= segEnd) break;
+      }
+      if (segEnd - cursor >= minMs) {
+        windows.push({ start: new Date(cursor).toISOString(), end: new Date(segEnd).toISOString() });
+      }
     }
 
     return {
       resourceId,
       day: localDateKey(dayStart, tz),
       timezone: tz,
-      durationMinutes,
-      // The form disables anything not in this list; these two tell it why a
-      // day is empty or why every slot will land in an approval queue.
-      requiresApproval: rules.requiresApproval || overAdvanceDay,
+      now: now.toISOString(),
+      // Local-midnight instant: the grid the client snaps start/end times to,
+      // so both sides agree on where :00/:30 falls.
+      gridAnchor: dayStart.toISOString(),
+      slotStepMinutes: BookingService.SLOT_STEP_MIN,
+      minDurationMinutes: rules.minDurationMinutes,
+      maxDurationMinutes: rules.maxDurationMinutes,
+      requiresApproval: rules.requiresApproval || overHorizon,
       maxAdvanceDays: rules.maxAdvanceDays,
+      allowExternalParticipants: rules.allowExternalParticipants,
+      allowRecurring: rules.allowRecurring,
+      // The whole business-hours block (future/horizon-clipped), ignoring the
+      // room's own bookings — for ONLINE meetings that occupy no room.
+      dayWindow: open && segEnd > segStart
+        ? { start: new Date(segStart).toISOString(), end: new Date(segEnd).toISOString() }
+        : null,
+      windows,
+    };
+  }
+
+  /**
+   * Start times open for a specific duration. Kept as a thin projection of
+   * freeWindows so existing callers/tests keep working; the richer form uses
+   * freeWindows directly and derives end times too.
+   */
+  async freeSlots(resourceId: string, day: string, durationMinutes: number) {
+    const fw = await this.freeWindows(resourceId, day);
+    if (durationMinutes < fw.minDurationMinutes || durationMinutes > fw.maxDurationMinutes) {
+      throw new BadRequestException(
+        `Duration must be between ${fw.minDurationMinutes} and ${fw.maxDurationMinutes} minutes.`,
+      );
+    }
+    const stepMs = fw.slotStepMinutes * 60000;
+    const durMs = durationMinutes * 60000;
+    const anchor = new Date(fw.gridAnchor).getTime();
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: fw.timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+
+    const slots: { startTime: string; endTime: string; label: string }[] = [];
+    for (const w of fw.windows) {
+      const ws = new Date(w.start).getTime();
+      const we = new Date(w.end).getTime();
+      // First grid point at or after the window start.
+      let t = anchor + Math.ceil((ws - anchor) / stepMs) * stepMs;
+      for (; t + durMs <= we; t += stepMs) {
+        slots.push({
+          startTime: new Date(t).toISOString(),
+          endTime: new Date(t + durMs).toISOString(),
+          label: fmt.format(new Date(t)),
+        });
+      }
+    }
+
+    return {
+      resourceId,
+      day: fw.day,
+      timezone: fw.timezone,
+      durationMinutes,
+      requiresApproval: fw.requiresApproval,
+      maxAdvanceDays: fw.maxAdvanceDays,
       slots,
     };
   }

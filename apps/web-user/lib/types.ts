@@ -116,6 +116,30 @@ export interface FreeSlots {
   slots: { startTime: string; endTime: string; label: string }[];
 }
 
+/**
+ * Contiguous free windows for a room/day — the unified booking form derives
+ * both start and end times from these, with a manually chosen duration.
+ */
+export interface FreeWindows {
+  resourceId: string;
+  day: string;
+  timezone: string;
+  /** Server 'now' as an instant, so the client filters the past consistently. */
+  now: string;
+  /** Local-midnight instant the :00/:30 grid snaps to. */
+  gridAnchor: string;
+  slotStepMinutes: number;
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
+  requiresApproval: boolean;
+  maxAdvanceDays: number;
+  allowExternalParticipants: boolean;
+  allowRecurring: boolean;
+  /** Whole business-hours block (room bookings ignored) — for ONLINE meetings. */
+  dayWindow: { start: string; end: string } | null;
+  windows: { start: string; end: string }[];
+}
+
 /** A colleague's proposal to move a meeting; the author decides. */
 export interface ChangeRequest {
   id: string;

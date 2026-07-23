@@ -166,3 +166,55 @@ describe('free slots', () => {
     expect(labels).not.toContain('13:00');
   });
 });
+
+describe('free windows (drives both start and end times)', () => {
+  const asMs = (iso: string) => new Date(iso).getTime();
+
+  it('returns the gaps around a booking, so an end time can run up to the next one', async () => {
+    await setRoomPolicy({ businessHours: { start: '08:00', end: '18:00', days: [1, 2, 3, 4, 5, 6, 7] } });
+    const dayKey = D.toISOString().slice(0, 10);
+    await asVip(() => bookings.create({
+      title: 'Midday', resourceId: R,
+      startTime: at(12).toISOString(), endTime: at(13).toISOString(),
+    } as any));
+
+    const fw = await asVip(() => bookings.freeWindows(R, dayKey));
+    expect(fw.windows.length).toBe(2);
+    // Morning window ends exactly where the booking starts — the end-time
+    // picker can offer anything up to 12:00 but no further.
+    expect(asMs(fw.windows[0].end)).toBe(at(12).getTime());
+    expect(asMs(fw.windows[1].start)).toBe(at(13).getTime());
+    expect(asMs(fw.windows[1].end)).toBe(at(18).getTime());
+    // dayWindow spans the whole business day (for online meetings).
+    expect(asMs(fw.dayWindow!.start)).toBe(at(8).getTime());
+    expect(asMs(fw.dayWindow!.end)).toBe(at(18).getTime());
+    expect(fw.minDurationMinutes).toBeGreaterThan(0);
+  });
+
+  it('a buffer widens the busy gap on both sides', async () => {
+    await setRoomPolicy({
+      bufferMinutes: 15,
+      businessHours: { start: '08:00', end: '18:00', days: [1, 2, 3, 4, 5, 6, 7] },
+    });
+    const dayKey = D.toISOString().slice(0, 10);
+    await asVip(() => bookings.create({
+      title: 'Buffered', resourceId: R,
+      startTime: at(12).toISOString(), endTime: at(13).toISOString(),
+    } as any));
+    const fw = await asVip(() => bookings.freeWindows(R, dayKey));
+    // Morning free-window now ends 15 min before the booking, afternoon starts
+    // 15 min after it.
+    expect(asMs(fw.windows[0].end)).toBe(at(12).getTime() - 15 * 60000);
+    expect(asMs(fw.windows[1].start)).toBe(at(13).getTime() + 15 * 60000);
+  });
+
+  it('an unavailable weekday yields no windows', async () => {
+    // Restrict to a weekday the probe day is not.
+    const wd = new Date(`${D.toISOString().slice(0, 10)}T12:00:00Z`).getUTCDay() || 7;
+    const others = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== wd);
+    await setRoomPolicy({ businessHours: { start: '08:00', end: '18:00', days: others } });
+    const fw = await asVip(() => bookings.freeWindows(R, D.toISOString().slice(0, 10)));
+    expect(fw.windows).toHaveLength(0);
+    expect(fw.dayWindow).toBeNull();
+  });
+});

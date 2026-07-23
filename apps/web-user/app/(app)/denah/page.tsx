@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import QuickBookModal from '@/components/QuickBookModal';
+import MeetingComposer from '@/components/MeetingComposer';
 import type { FloorOption, FloorPlanView } from '@/lib/types';
 import { fmtTime, todayLocal, tzLabel } from '@/lib/format';
 
@@ -21,7 +21,7 @@ export default function DenahPage() {
   const [floorId, setFloorId] = useState('');
   const [data, setData] = useState<FloorPlanView | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [quick, setQuick] = useState<{ id: string; name: string } | null>(null);
+  const [quick, setQuick] = useState<{ id: string; name: string; floor?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
 
@@ -181,9 +181,11 @@ export default function DenahPage() {
 
               <div className="modal-footer" style={{ justifyContent: 'flex-start', marginTop: 14 }}>
                 <button type="button" className="btn btn-primary"
-                  disabled={room.state === 'maintenance'}
-                  onClick={() => setQuick({ id: room.id, name: room.name })}>
-                  {room.policy?.requiresApproval ? t('common.request_booking') : t('common.book_now')}
+                  disabled={room.state === 'maintenance' || room.policy?.canBook === false}
+                  title={room.policy?.canBook === false ? t('book.restricted_hint') : undefined}
+                  onClick={() => setQuick({ id: room.id, name: room.name, floor: data?.floor?.name ?? null })}>
+                  {room.policy?.canBook === false ? t('book.restricted')
+                    : room.policy?.requiresApproval ? t('common.request_booking') : t('common.book_now')}
                 </button>
                 <Link href={`/room/${room.id}`} className="btn btn-ghost">{t('denah.open_room')}</Link>
               </div>
@@ -193,8 +195,8 @@ export default function DenahPage() {
       </div>
 
       {quick ? (
-        <QuickBookModal resourceId={quick.id} resourceName={quick.name}
-          day={todayLocal()} start="09:00"
+        <MeetingComposer resourceId={quick.id} resourceName={quick.name} resourceFloor={quick.floor}
+          day={data?.day ?? todayLocal()}
           onClose={() => setQuick(null)}
           onBooked={() => { setQuick(null); load(); }} />
       ) : null}

@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
-import QuickBookModal from '@/components/QuickBookModal';
+import MeetingComposer from '@/components/MeetingComposer';
 import RequestChangeModal from '@/components/RequestChangeModal';
 import type { Booking, DayGrid } from '@/lib/types';
 import { fmtDayLong, fmtTime, todayLocal, tzLabel } from '@/lib/format';
@@ -48,7 +48,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<Booking | null>(null);
-  const [quick, setQuick] = useState<{ roomId: string; roomName: string; start: string } | null>(null);
+  const [quick, setQuick] = useState<{ roomId: string; roomName: string; floor?: string | null; start: string } | null>(null);
   const [requesting, setRequesting] = useState<{
     id: string; title: string; startTime: string; endTime: string; ownerName?: string | null;
   } | null>(null);
@@ -99,7 +99,7 @@ export default function SchedulePage() {
     const snapped = Math.max(DAY_START_H * 60, Math.round(raw / SLOT_MIN) * SLOT_MIN);
     const hh = String(Math.floor(snapped / 60)).padStart(2, '0');
     const mm = String(snapped % 60).padStart(2, '0');
-    setQuick({ roomId: room.id, roomName: room.name, start: `${hh}:${mm}` });
+    setQuick({ roomId: room.id, roomName: room.name, floor: (room as any).floor?.name ?? null, start: `${hh}:${mm}` });
   }
 
   return (
@@ -166,7 +166,7 @@ export default function SchedulePage() {
                     onClick={(e) => onLaneClick(e, room)}
                     role="button" tabIndex={0}
                     aria-label={`${room.name} — ${room.canBook === false ? t('sched.restricted') : t('sched.click_to_book')}`}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && room.canBook !== false) setQuick({ roomId: room.id, roomName: room.name, start: '09:00' }); }}>
+                    onKeyDown={(e) => { if (e.key === 'Enter' && room.canBook !== false) setQuick({ roomId: room.id, roomName: room.name, floor: room.floor?.name ?? null, start: '09:00' }); }}>
                     {hours.slice(1).map((h) => (
                       <span key={h} className="sched-line" style={{ left: `${((h - DAY_START_H) * 60 / TOTAL_MIN) * 100}%` }} />
                     ))}
@@ -212,9 +212,9 @@ export default function SchedulePage() {
       )}
 
       {quick ? (
-        <QuickBookModal
-          resourceId={quick.roomId} resourceName={quick.roomName}
-          day={day} start={quick.start}
+        <MeetingComposer
+          resourceId={quick.roomId} resourceName={quick.roomName} resourceFloor={quick.floor}
+          day={day} initialStart={quick.start}
           onClose={() => setQuick(null)}
           onBooked={() => { setQuick(null); load(); }}
         />

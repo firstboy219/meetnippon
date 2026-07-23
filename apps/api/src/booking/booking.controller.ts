@@ -16,7 +16,7 @@ import { CancelBookingDto, CheckInDto } from './dto/cancel-booking.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { ParticipantAvailabilityDto } from './dto/participant-availability.dto';
-import { FreeSlotsQueryDto } from './dto/free-slots-query.dto';
+import { FreeSlotsQueryDto, FreeWindowsQueryDto } from './dto/free-slots-query.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -49,6 +49,15 @@ export class BookingController {
   @Get('free-slots')
   freeSlots(@Query() q: FreeSlotsQueryDto) {
     return this.bookings.freeSlots(q.resourceId, q.day, q.durationMinutes ?? 60);
+  }
+
+  /**
+   * Contiguous free windows for a room/day — the richer primitive the unified
+   * booking form uses to offer both start and end times with a manual duration.
+   */
+  @Get('free-windows')
+  freeWindows(@Query() q: FreeWindowsQueryDto) {
+    return this.bookings.freeWindows(q.resourceId, q.day);
   }
 
   @Get(':id')

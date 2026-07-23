@@ -16,3 +16,12 @@ export class FreeSlotsQueryDto {
   @Max(480)
   durationMinutes?: number;
 }
+
+export class FreeWindowsQueryDto {
+  @IsString()
+  resourceId!: string;
+
+  /** Calendar date on the tenant's clock. */
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'day must be YYYY-MM-DD' })
+  day!: string;
+}

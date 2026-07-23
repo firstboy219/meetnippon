@@ -1148,6 +1148,39 @@ stretch; 40-days-out lands PENDING with one approval step; allowlisted room is
 403 for outsiders / 201 for listed users with no allowlist leak; change request
 round-trip moved a real booking and notified both sides.
 
+### T6 — one unified, advanced create-meeting form everywhere (2026-07-24)
+
+Follow-up to the tester batch: the available-time picker showed only START
+times, and the two create forms (Book page vs Room Schedule/Denah) had
+different feature sets. Both fixed.
+
+- **Free WINDOWS, not just start slots.** New `GET /bookings/free-windows`
+  returns the day's contiguous free gaps for a room (business hours − buffered
+  bookings − min-advance − horizon), plus policy metadata and a `dayWindow`
+  (whole business day, room ignored) for ONLINE meetings. The form derives
+  BOTH start and end times from these: pick a start, then an **end** offered
+  only as far as the room stays free. `freeSlots` was refactored to a thin
+  projection of `freeWindows`, so its callers/tests are unchanged.
+- **Manual duration.** Duration is preset chips (30/45/60/90/120) **plus** a
+  typed minutes field, clamped to the policy's min/max. Changing it re-derives
+  the start grid; picking a different end re-derives the duration — two views of
+  one choice.
+- **One shared `MeetingComposer`** replaces both `BookingModal` (Book page) and
+  `QuickBookModal` (Schedule + Denah, now deleted). Every entry point now has
+  the same advanced form: title, date, manual duration, available start + end
+  times, meeting type + link, participant picker with the schedule-assistant
+  clash check, reminders, repeat, and record — with the invite-confirmation
+  step preserved. Restricted rooms stay non-bookable in Denah too.
+
+Time handling got simpler and more correct: the server hands back real instants
+(windows + gridAnchor), the client snaps to the :00/:30 grid off that anchor and
+submits the instants directly — no client-side timezone arithmetic to get wrong.
+
+Gate: 209/209 (3 new freeWindows tests: gap-splitting around a booking, buffer
+widening both sides, unavailable weekday → no windows). Live smoke: window ends
+exactly where a booking starts and resumes where it ends; dayWindow present;
+free-slots backward-compatible. Deployed api + web-user.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
