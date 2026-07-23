@@ -1258,6 +1258,16 @@ candidate for a later polish.
 
 Gate: web-user builds; 211/211 unchanged (client-only change).
 
+### T10 — remove nested scrollbar in the booking composer (2026-07-24)
+
+Follow-up to the regression note. The start/end time grids each had their own
+`max-height + overflow-y:auto`, nested inside the modal's own scroll — two
+scrollbars, so the wheel got trapped in the inner grid. Dropped the grids' inner
+scroll so the modal is the single scroll container; the time chips now flow
+naturally and the wheel scrolls the whole form. Verified in-browser including
+the longest case (an ONLINE meeting's full-day 06:00–22:30 start list): one
+scrollbar, no trap. CSS-only; web-user builds, tests unchanged.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
