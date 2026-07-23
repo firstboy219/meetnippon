@@ -200,8 +200,11 @@ button.link { background: none; border: none; padding: 0; font-family: var(--fon
 .slot-chip { padding: 8px 4px; border-radius: 9px; border: 1px solid var(--line); background: #fff;
   font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer;
   transition: background .12s, border-color .12s; }
-.slot-chip:hover { border-color: var(--brand); }
-.slot-chip.active { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.slot-chip:hover { border-color: var(--teal); background: var(--teal-tint); }
+/* The tenant brand colour is --teal (overridden at runtime), not --brand — the
+   old name was undefined, leaving the picked slot white-on-white. */
+.slot-chip.active { background: var(--teal); border-color: var(--teal); color: var(--on-brand); }
+.slot-chip.active:hover { background: var(--teal-dark); }
 /* End-time chips carry the resulting duration as a subtle second line. */
 .slot-chip .slot-dur { display: block; font-size: 10px; font-weight: 600; opacity: .62; margin-top: 1px; }
 .slot-chip.active .slot-dur { opacity: .85; }

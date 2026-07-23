@@ -3,10 +3,34 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
+/** One labelled row in the details card, e.g. When / Where / Link. */
+export interface MailDetail {
+  label: string;
+  value: string;
+  /** When set, the value renders as a link (used for the meeting URL). */
+  href?: string;
+}
+
+/** A call-to-action button. `primary` gets the filled brand colour. */
+export interface MailButton {
+  label: string;
+  url: string;
+  primary?: boolean;
+}
+
+/** Tenant look for the email header — falls back to the MeetNippon palette. */
+export interface MailBrand {
+  name?: string;
+  /** Header background; text colour is derived for contrast. */
+  color?: string;
+  /** Absolute logo URL. Many clients block remote images, so never rely on it. */
+  logoUrl?: string;
+}
+
 export interface MailInput {
   to: string | string[];
   subject: string;
-  /** Plain-text body. An HTML wrapper is generated from it. */
+  /** Plain-text body / fallback. An HTML wrapper is generated from it. */
   text: string;
   /** Optional call-to-action rendered as a button in the HTML part. */
   action?: { label: string; url: string };
@@ -16,6 +40,25 @@ export interface MailInput {
    * env defaults, which is what unscoped/system mail wants.
    */
   tenantId?: string;
+
+  // ---- Optional structured content for the designed HTML email. When these
+  // are present the template renders a branded card with a details table and
+  // CTA buttons; when absent it falls back to `text` inside the same shell, so
+  // every existing caller keeps working unchanged.
+  /** Big title inside the card. */
+  heading?: string;
+  /** Short line under a coloured header bar, e.g. "New invitation". */
+  eyebrow?: string;
+  /** Intro paragraph above the details. */
+  intro?: string;
+  /** Labelled rows: When, Where, Link, Organiser… */
+  details?: MailDetail[];
+  /** CTA buttons; the first `primary` one is the filled brand button. */
+  buttons?: MailButton[];
+  /** Tenant branding for the header. */
+  brand?: MailBrand;
+  /** Small closing line above the footer. */
+  footerNote?: string;
 }
 
 /**
@@ -205,24 +248,95 @@ export class MailService implements OnModuleInit {
   }
 
   private plain(input: MailInput): string {
-    return input.action
-      ? `${input.text}\n\n${input.action.label}: ${input.action.url}\n`
-      : `${input.text}\n`;
+    // `text` stays the authoritative plain body; the CTA links are appended so
+    // a text-only client still gets the meeting link.
+    const btns = input.buttons ?? (input.action ? [input.action] : []);
+    const tail = btns.map((b) => `${b.label}: ${b.url}`).join('\n');
+    return tail ? `${input.text}\n\n${tail}\n` : `${input.text}\n`;
+  }
+
+  /** Ink colour that reads on `hex` — dark text on a pale brand, else white. */
+  private onColor(hex: string): string {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return '#FFFFFF';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    // BT.601 luma; the same threshold the portal uses for --on-brand.
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#20242B' : '#FFFFFF';
   }
 
   private html(input: MailInput): string {
     const esc = (s: string) =>
       s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const body = esc(input.text).replace(/\n/g, '<br>');
-    const button = input.action
-      ? `<p style="margin:24px 0 8px"><a href="${esc(input.action.url)}" style="background:#0E6E55;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-weight:600;display:inline-block">${esc(input.action.label)}</a></p>`
+
+    const brandName = input.brand?.name || 'MeetNippon';
+    const brandColor = /^#?[0-9a-f]{6}$/i.test(input.brand?.color ?? '') ? input.brand!.color! : '#0E6E55';
+    const onBrand = this.onColor(brandColor);
+    const structured = Boolean(input.heading || input.details?.length);
+
+    const header = `<tr><td style="background:${esc(brandColor)};padding:22px 30px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="color:${onBrand};font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:18px;font-weight:700;letter-spacing:.2px">${esc(brandName)}</td>
+${input.eyebrow ? `<td align="right" style="color:${onBrand};opacity:.9;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">${esc(input.eyebrow)}</td>` : ''}
+</tr></table></td></tr>`;
+
+    let content: string;
+    if (structured) {
+      const rows = (input.details ?? []).map((d, i) => {
+        // A divider above every row except the first — a clean separator line
+        // between fields, no stray half-line at the top.
+        const div = i === 0 ? '' : 'border-top:1px solid #EDEAE3;';
+        const val = d.href
+          ? `<a href="${esc(d.href)}" style="color:#0E6E55;text-decoration:none;word-break:break-all">${esc(d.value)}</a>`
+          : esc(d.value);
+        return `<tr>
+<td style="padding:11px 16px;${div}color:#6B7178;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;vertical-align:top;white-space:nowrap">${esc(d.label)}</td>
+<td style="padding:11px 16px;${div}color:#20242B;font-size:14px;line-height:1.5">${val}</td>
+</tr>`;
+      }).join('');
+      const detailsTable = rows
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 8px;background:#FBFAF7;border:1px solid #EDEAE3;border-radius:12px;border-collapse:separate">
+<tr><td colspan="2" style="height:4px"></td></tr>${rows}</table>`
+        : '';
+      content = `<h1 style="margin:0 0 8px;font-size:21px;font-weight:700;color:#20242B;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${esc(input.heading ?? '')}</h1>
+${input.intro ? `<p style="margin:0 0 18px;color:#4A4F57;font-size:14px;line-height:1.65">${esc(input.intro)}</p>` : ''}
+${detailsTable}`;
+    } else {
+      content = `<div style="font-size:15px;line-height:1.65;color:#20242B">${esc(input.text).replace(/\n/g, '<br>')}</div>`;
+    }
+
+    const btns = input.buttons ?? (input.action ? [{ ...input.action, primary: true }] : []);
+    const buttonsHtml = btns.length
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 4px"><tr>${btns.map((b) => {
+        const style = b.primary
+          ? `background:${esc(brandColor)};color:${onBrand};border:1px solid ${esc(brandColor)}`
+          : 'background:#ffffff;color:#20242B;border:1px solid #D9D6CE';
+        return `<td style="padding-right:10px"><a href="${esc(b.url)}" style="${style};text-decoration:none;padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;display:inline-block;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${esc(b.label)}</a></td>`;
+      }).join('')}</tr></table>`
       : '';
-    return `<!doctype html><html><body style="margin:0;background:#FAF9F6;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#20242B">
-<div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #E7E5DF;border-radius:14px;padding:28px">
-<div style="font-size:15px;line-height:1.65">${body}</div>
-${button}
-<hr style="border:none;border-top:1px solid #E7E5DF;margin:24px 0 12px">
-<div style="font-size:11.5px;color:#6B7178">Sent by MeetNippon. You are receiving this because you are a member of this workspace.</div>
-</div></body></html>`;
+
+    const footNote = input.footerNote
+      ? `<p style="margin:18px 0 0;color:#6B7178;font-size:12.5px;line-height:1.6">${esc(input.footerNote)}</p>`
+      : '';
+
+    return `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;padding:0;background:#F1EFE9;-webkit-text-size-adjust:100%">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1EFE9;padding:24px 12px">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #E7E5DF;border-radius:16px;overflow:hidden">
+${header}
+<tr><td style="padding:28px 30px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+${content}
+${buttonsHtml}
+${footNote}
+</td></tr>
+<tr><td style="padding:16px 30px 24px;border-top:1px solid #EDEAE3">
+<p style="margin:0;color:#9AA0A6;font-size:11.5px;line-height:1.6;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">You are receiving this because you are a member of <strong style="color:#6B7178">${esc(brandName)}</strong> on MeetNippon.</p>
+</td></tr>
+</table>
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%"><tr><td style="padding:14px 8px;text-align:center;color:#B3B3AD;font-size:11px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">Powered by MeetNippon</td></tr></table>
+</td></tr></table>
+</body></html>`;
   }
 }

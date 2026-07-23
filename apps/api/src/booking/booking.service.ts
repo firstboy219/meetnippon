@@ -72,7 +72,10 @@ export class BookingService {
    * deliberately reports how many it could not reach rather than pretending.
    */
   private async notifyParticipants(
-    booking: { id: string; title: string; startTime: Date; endTime: Date; resourceId?: string | null },
+    booking: {
+      id: string; title: string; startTime: Date; endTime: Date;
+      resourceId?: string | null; meetingLink?: string | null; description?: string | null;
+    },
     participants: { userId?: string; email: string }[],
     kind: 'invited' | 'moved',
   ): Promise<{ notified: number; emailQueued: number }> {
@@ -107,33 +110,78 @@ export class BookingService {
     const organiser = users.find((u) => u.id === callerId)?.email;
     const recipients = [...new Set(emails)].filter((e) => e !== organiser);
     if (recipients.length) {
-      const [tenant, resource] = await Promise.all([
-        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true } }),
+      const [tenant, resource, organiserUser] = await Promise.all([
+        this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: {
+            name: true, timezone: true,
+            branding: { select: { primaryColor: true, displayName: true, logoUrl: true } },
+          },
+        }),
         booking.resourceId
           ? this.prisma.scoped.resource.findUnique({
-            where: { id: booking.resourceId }, select: { name: true },
+            where: { id: booking.resourceId },
+            select: { name: true, floor: { select: { name: true, building: { select: { name: true } } } } },
           })
           : Promise.resolve(null),
+        this.prisma.scoped.user.findUnique({ where: { id: callerId }, select: { fullName: true } }),
       ]);
       const tz = tenant?.timezone || 'UTC';
-      const when = formatRange(booking.startTime, booking.endTime, tz);
-      const where = resource?.name ?? 'Online';
+      const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
+      const link = (booking.meetingLink ?? '').trim();
+      const where = resource
+        ? [resource.name, resource.floor?.building?.name, resource.floor?.name].filter(Boolean).join(' · ')
+        : 'Online meeting';
+
+      // Structured details, so the meeting link is actually in the email — the
+      // whole point of an invitation — alongside a clean when/where/organiser.
+      const details = [
+        { label: 'Meeting', value: booking.title },
+        { label: 'When', value: formatRange(booking.startTime, booking.endTime, tz) },
+        { label: 'Where', value: where },
+        ...(link ? [{ label: 'Join link', value: link, href: link }] : []),
+        ...(organiserUser?.fullName ? [{ label: 'Organiser', value: organiserUser.fullName }] : []),
+        ...(booking.description?.trim()
+          ? [{ label: 'Notes', value: booking.description.trim() }]
+          : []),
+      ];
+
+      const buttons = [
+        ...(link ? [{ label: 'Join meeting', url: link, primary: true }] : []),
+        { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar`, primary: !link },
+      ];
+
       this.mail.send({
         tenantId,
         to: recipients,
         subject: kind === 'invited'
           ? `Invitation: ${booking.title}`
           : `Rescheduled: ${booking.title}`,
+        eyebrow: kind === 'invited' ? 'New invitation' : 'Meeting updated',
+        heading: kind === 'invited' ? booking.title : `Rescheduled: ${booking.title}`,
+        intro: kind === 'invited'
+          ? `You've been invited to a meeting at ${brandName}. The details are below — add it to your calendar or join with one tap.`
+          : `A meeting you're attending at ${brandName} has moved. Here are the new details.`,
+        details,
+        buttons,
+        brand: {
+          name: brandName,
+          color: tenant?.branding?.primaryColor,
+          logoUrl: this.absoluteUrl(tenant?.branding?.logoUrl),
+        },
+        footerNote: 'Please let the organiser know if you can’t make it.',
+        // Plain-text fallback mirrors the details for text-only clients.
         text: [
           kind === 'invited'
-            ? `You have been invited to a meeting at ${tenant?.name ?? 'MeetNippon'}.`
-            : `A meeting you are attending at ${tenant?.name ?? 'MeetNippon'} has been moved.`,
+            ? `You have been invited to a meeting at ${brandName}.`
+            : `A meeting you are attending at ${brandName} has moved.`,
           '',
           `What:  ${booking.title}`,
-          `When:  ${when}`,
+          `When:  ${formatRange(booking.startTime, booking.endTime, tz)}`,
           `Where: ${where}`,
+          ...(link ? [`Link:  ${link}`] : []),
+          ...(organiserUser?.fullName ? [`Organiser: ${organiserUser.fullName}`] : []),
         ].join('\n'),
-        action: { label: 'Open calendar', url: `${this.appBaseUrl()}/calendar` },
       });
     }
 
@@ -148,6 +196,13 @@ export class BookingService {
 
   private appBaseUrl(): string {
     return this.config.get<string>('APP_BASE_URL') || 'https://meetnippon.cosger.online';
+  }
+
+  /** Absolutise a possibly-relative logo path for use in an email. */
+  private absoluteUrl(url?: string | null): string | undefined {
+    if (!url) return undefined;
+    if (/^https?:\/\//i.test(url)) return url;
+    return `${this.appBaseUrl()}${url.startsWith('/') ? '' : '/'}${url}`;
   }
 
   /** Any active booking whose (buffered) window overlaps the given slot. */

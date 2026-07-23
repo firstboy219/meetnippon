@@ -1181,6 +1181,34 @@ widening both sides, unavailable weekday → no windows). Live smoke: window end
 exactly where a booking starts and resumes where it ends; dayWindow present;
 free-slots backward-compatible. Deployed api + web-user.
 
+### T7 — visible selected-slot chip + professional invitation email (2026-07-24)
+
+Two reported issues:
+
+1. **Picked time was invisible (white-on-white).** `.slot-chip.active` used
+   `var(--brand)`, which is not a defined token — the brand colour is `--teal`
+   (overridden per tenant at runtime). The undefined var made the `background`
+   declaration invalid, so the chip kept its white default while the text was
+   `--on-brand` white. Fixed to `--teal`/`--teal-dark`, plus a tinted hover.
+2. **Invitation email had no meeting link and a plain shell.** `MailInput` now
+   carries optional structured content (`heading`, `eyebrow`, `intro`,
+   `details[]`, `buttons[]`, `brand`, `footerNote`); `html()` renders a
+   table-based, email-client-safe design: a **tenant-branded header bar** (colour
+   from the workspace's branding, ink auto-picked for contrast via BT.601),
+   a details card (Meeting / When / Where / **Join link** / Organiser / Notes),
+   and CTA buttons (**Join meeting** filled + Open in calendar outlined). The
+   plain-text part carries the same link for text-only clients.
+   `notifyParticipants` now passes the room+floor+building for Where, the
+   organiser's name, the description as Notes, and — the actual fix — the
+   `meetingLink`, which it never included before.
+
+Backward-compatible: callers with no structured fields still render `text` in
+the same nicer shell (the two mail-escaping unit tests pass unchanged).
+
+Gate: 209/209. Verified by rendering the real template (private `html()` off the
+built image) with Nipsea branding — header #429eff, all detail rows, both
+buttons, correct contrast.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
