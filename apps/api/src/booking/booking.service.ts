@@ -407,6 +407,71 @@ export class BookingService {
       : { ...created[0], invites };
   }
 
+  /**
+   * People the caller has invited before, most-used first — so inviting the
+   * same group again is one tap, not a re-typed guest list.
+   *
+   * Derived from the caller's own past bookings rather than a stored contact
+   * list: the participants are already on those rows, and deriving keeps it
+   * self-cleaning (someone you stop inviting simply drifts down and off). The
+   * external guests are the real win here — they are not in the directory, so
+   * without this their address is retyped every meeting.
+   */
+  async recentParticipants(limit = 12) {
+    const { userId } = this.caller();
+    const caller = await this.prisma.scoped.user.findUnique({
+      where: { id: userId }, select: { email: true },
+    });
+    const selfEmail = caller?.email?.toLowerCase() ?? '';
+
+    const rows = await this.prisma.scoped.booking.findMany({
+      where: { OR: [{ bookerId: userId }, { principalId: userId }] },
+      select: { participants: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+
+    const agg = new Map<string, { email: string; userId?: string; count: number; last: number }>();
+    for (const b of rows) {
+      const ps = (b.participants as unknown as { userId?: string; email?: string }[]) ?? [];
+      for (const p of ps) {
+        const email = (p?.email ?? '').trim().toLowerCase();
+        if (!email || email === selfEmail) continue;
+        const cur = agg.get(email) ?? { email, userId: p.userId, count: 0, last: 0 };
+        cur.count += 1;
+        cur.last = Math.max(cur.last, b.createdAt.getTime());
+        if (p.userId) cur.userId = p.userId;
+        agg.set(email, cur);
+      }
+    }
+
+    const ranked = [...agg.values()]
+      .sort((a, b) => b.count - a.count || b.last - a.last)
+      .slice(0, limit);
+
+    // Attach current names for anyone still in the directory; the rest are
+    // external guests carried by email alone.
+    const emails = ranked.map((x) => x.email);
+    const users = emails.length
+      ? await this.prisma.scoped.user.findMany({
+        where: { email: { in: emails }, isActive: true },
+        select: { id: true, email: true, fullName: true },
+      })
+      : [];
+    const byEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
+
+    return ranked.map((x) => {
+      const u = byEmail.get(x.email);
+      return {
+        email: x.email,
+        name: u?.fullName ?? null,
+        userId: u?.id ?? null,
+        external: !u,
+        count: x.count,
+      };
+    });
+  }
+
   listMine(q: ListBookingsQueryDto = {}) {
     const { userId } = this.caller();
     const now = new Date();

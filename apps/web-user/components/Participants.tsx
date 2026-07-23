@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
-import type { DirectoryUser, Participant } from '@/lib/types';
+import type { DirectoryUser, Participant, RecentParticipant } from '@/lib/types';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -24,11 +24,15 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
   const { push } = useToast();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState<DirectoryUser[]>([]);
+  const [recent, setRecent] = useState<RecentParticipant[]>([]);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     api.get<DirectoryUser[]>('/users/directory').then(setDir).catch(() => setDir([]));
+    // People this user has invited before — the external guests especially,
+    // who are not in the directory and would otherwise be retyped each time.
+    api.get<RecentParticipant[]>('/bookings/recent-participants').then(setRecent).catch(() => setRecent([]));
   }, []);
 
   useEffect(() => {
@@ -55,12 +59,34 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
 
   const matches = useMemo(() => {
     const term = q.trim().toLowerCase();
+    // Empty box shows the "recently invited" list instead of arbitrary
+    // colleagues; the directory is searched once the user types.
+    if (!term) return [];
     return dir
       .filter((u) => u.email.toLowerCase() !== selfEmail?.toLowerCase())
       .filter((u) => !chosen.has(u.email.toLowerCase()))
-      .filter((u) => !term || `${u.fullName} ${u.email}`.toLowerCase().includes(term))
+      .filter((u) => `${u.fullName} ${u.email}`.toLowerCase().includes(term))
       .slice(0, 6);
   }, [dir, q, chosen, selfEmail]);
+
+  /**
+   * Previously-invited people to offer. When the box is empty these are the
+   * headline suggestions; when searching, only the ones the directory list
+   * does not already cover (i.e. external guests) are added, so nothing shows
+   * twice. External guests are dropped when the room forbids them.
+   */
+  const recentMatches = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const dirEmails = new Set(matches.map((u) => u.email.toLowerCase()));
+    return recent
+      .filter((r) => r.email.toLowerCase() !== selfEmail?.toLowerCase())
+      .filter((r) => !chosen.has(r.email.toLowerCase()))
+      .filter((r) => allowExternal || !r.external)
+      .filter((r) => !term || `${r.name ?? ''} ${r.email}`.toLowerCase().includes(term))
+      // While searching, skip anyone already shown in the directory results.
+      .filter((r) => !term || !dirEmails.has(r.email.toLowerCase()))
+      .slice(0, 6);
+  }, [recent, q, chosen, selfEmail, allowExternal, matches]);
 
   const typedIsEmail = EMAIL.test(q.trim());
   // A typed address is by definition someone outside the directory, so when the
@@ -73,6 +99,9 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
     setQ('');
     setOpen(false);
   }
+  function addRecent(r: RecentParticipant) {
+    add(r.userId ? { userId: r.userId, email: r.email, name: r.name ?? undefined } : { email: r.email, external: true });
+  }
   function remove(email: string) {
     onChange(value.filter((p) => p.email !== email));
   }
@@ -82,6 +111,7 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
       // Enter inside the picker adds a guest; it must not submit the booking.
       e.preventDefault();
       if (matches.length) add({ userId: matches[0].id, email: matches[0].email, name: matches[0].fullName });
+      else if (recentMatches.length) addRecent(recentMatches[0]);
       else if (canAddTyped) add({ email: q.trim(), external: true });
       else if (blockedExternal) push(t('part.no_external'), 'error');
     } else if (e.key === 'Escape' && open) {
@@ -108,7 +138,7 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
         <input className="f-input" value={q} placeholder={t('part.placeholder')}
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)} onKeyDown={onKeyDown} />
-        {open && (matches.length > 0 || canAddTyped || blockedExternal) ? (
+        {open && (matches.length > 0 || recentMatches.length > 0 || canAddTyped || blockedExternal) ? (
           <div className="picker-menu">
             {matches.map((u) => (
               <button type="button" key={u.id} className="picker-item"
@@ -117,6 +147,21 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
                 <span className="picker-sub">{u.email}{u.department ? ` · ${u.department}` : ''}</span>
               </button>
             ))}
+            {recentMatches.length ? (
+              <>
+                <div className="picker-group">{t('part.recent')}</div>
+                {recentMatches.map((r) => (
+                  <button type="button" key={`r-${r.email}`} className="picker-item"
+                    onClick={() => addRecent(r)}>
+                    <span className="picker-name">
+                      {r.name ?? r.email}
+                      {r.external ? <em className="picker-ext-tag">{t('part.external')}</em> : null}
+                    </span>
+                    <span className="picker-sub">{r.name ? r.email : t('part.invited_before')}</span>
+                  </button>
+                ))}
+              </>
+            ) : null}
             {canAddTyped ? (
               <button type="button" className="picker-item" onClick={() => add({ email: q.trim(), external: true })}>
                 <span className="picker-name">{t('part.invite_ext')} “{q.trim()}”</span>

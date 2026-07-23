@@ -677,6 +677,12 @@ tr:last-child td { border-bottom: none; }
 .picker-blocked:hover { background: var(--amber-tint); }
 .picker-name { display: block; font-size: 13px; font-weight: 600; }
 .picker-sub { display: block; font-size: 11.5px; color: var(--ink-soft); margin-top: 1px; }
+/* Section heading inside the guest picker (e.g. "Recently invited"). */
+.picker-group { padding: 8px 13px 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-soft); background: #FBFAF7; border-top: 1px solid var(--line); }
+.picker-ext-tag { margin-left: 7px; font-style: normal; font-size: 9.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--coral);
+  background: var(--coral-tint); padding: 1px 6px; border-radius: 100px; }
 
 .invite-list { list-style: none; margin-bottom: 14px; border: 1px solid var(--line);
   border-radius: 10px; overflow: hidden; max-height: 176px; overflow-y: auto; }

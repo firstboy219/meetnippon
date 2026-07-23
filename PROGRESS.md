@@ -1209,6 +1209,28 @@ Gate: 209/209. Verified by rendering the real template (private `html()` off the
 built image) with Nipsea branding — header #429eff, all detail rows, both
 buttons, correct contrast.
 
+### T8 — remember previously-invited participants (2026-07-24)
+
+Requested: make re-inviting the same people easy. New
+`GET /bookings/recent-participants` returns the people the caller has invited
+before, ranked by how often (then recency), resolved against the current
+directory for names. **No new table** — it aggregates the `participants` JSON
+already on the caller's own past bookings, so it is self-cleaning (stop
+inviting someone and they drift off the list) and needs no write path or
+migration.
+
+The guest picker (`Participants.tsx`) now shows a **"Recently invited"** group:
+- Empty search box → the recents are the suggestions (instead of arbitrary
+  colleagues); the directory is searched once you type.
+- While searching, recents are merged in but de-duped against directory hits,
+  so external guests — who are *not* in the directory and were retyped every
+  time before — finally surface by name/email. External ones are tagged and
+  hidden when the room forbids guests.
+
+Self is never suggested. Gate: 211/211 (2 new: frequency ranking + internal
+name resolution + self-exclusion). Live smoke on nipsea: an external guest and
+a colleague both appeared after one booking; the caller stayed excluded.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

@@ -39,6 +39,12 @@ export class BookingController {
     return this.bookings.participantAvailability(dto.emails, dto.startTime, dto.endTime);
   }
 
+  /** People the caller has invited before — quick re-add in the guest picker. */
+  @Get('recent-participants')
+  recentParticipants() {
+    return this.bookings.recentParticipants();
+  }
+
   // NOTE: declared before ':id' so the literal path wins the route match.
   @Get('availability')
   availability(@Query() q: AvailabilityQueryDto) {

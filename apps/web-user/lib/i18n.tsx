@@ -302,6 +302,8 @@ const DICT: Dict = {
   'part.invite_ext': { en: 'Invite', id: 'Undang' },
   'part.hint': { en: 'Colleagues are notified in the app. Leave empty to book just for yourself.', id: 'Rekan kerja diberi tahu di dalam aplikasi. Kosongkan untuk memesan hanya untuk diri sendiri.' },
   'part.no_external': { en: 'This room does not allow guests from outside your workspace.', id: 'Ruang ini tidak mengizinkan tamu dari luar workspace Anda.' },
+  'part.recent': { en: 'Recently invited', id: 'Baru saja diundang' },
+  'part.invited_before': { en: 'Invited before', id: 'Pernah diundang' },
   'modal.hours_hint': { en: 'bookable', id: 'dapat dipesan' },
 
   'modal.review': { en: 'Review invites', id: 'Tinjau undangan' },

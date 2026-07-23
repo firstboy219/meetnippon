@@ -192,6 +192,16 @@ export interface Participant {
   external?: boolean;
 }
 
+/** Someone the user has invited before, for one-tap re-invite. */
+export interface RecentParticipant {
+  email: string;
+  name: string | null;
+  userId: string | null;
+  external: boolean;
+  /** How many past meetings they were invited to. */
+  count: number;
+}
+
 /**
  * `notified` — in-app notifications actually written.
  * `emailQueued` — messages handed to the mail server. Delivery is asynchronous,
