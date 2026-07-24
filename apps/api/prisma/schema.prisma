@@ -241,6 +241,14 @@ model User {
   /// URL of an uploaded avatar; null falls back to initials.
   avatarUrl     String?
   passwordHash  String?
+  /// Set when an admin hands over a password (account creation or reset). The
+  /// portal blocks on a change screen until the person sets their own, so a
+  /// password the admin knows never stays in use.
+  mustChangePassword Boolean @default(false)
+  /// When the welcome tour was finished or skipped. Stored per user rather than
+  /// in localStorage so onboarding follows the person across devices — and so a
+  /// colleague's browser does not silently mark them as onboarded.
+  onboardedAt   DateTime?
   role          UserRole  @default(EMPLOYEE)
   department    String?
   languagePref  Language  @default(EN)

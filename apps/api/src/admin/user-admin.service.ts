@@ -79,6 +79,9 @@ export class UserAdminService {
         department: dto.department ?? null,
         languagePref: dto.languagePref ?? 'EN',
         passwordHash,
+        // Whoever set this password (the platform or the admin) knows it, so
+        // the account is not really the user's until they replace it.
+        mustChangePassword: true,
       } as any,
       select: SAFE_SELECT,
     });
@@ -142,7 +145,11 @@ export class UserAdminService {
   async resetPassword(id: string, dto: ResetPasswordDto) {
     await this.mustExist(id);
     const passwordHash = await hashPassword(dto.password);
-    await this.prisma.scoped.user.update({ where: { id }, data: { passwordHash } });
+    // Same reasoning as create(): an admin-chosen password is a handover, not
+    // the user's own — they must replace it on the next sign-in.
+    await this.prisma.scoped.user.update({
+      where: { id }, data: { passwordHash, mustChangePassword: true },
+    });
     await this.audit.log({ action: 'user.reset_password', entity: 'User', entityId: id });
     return { updated: true };
   }

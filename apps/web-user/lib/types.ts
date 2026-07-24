@@ -24,6 +24,22 @@ export interface AuthUser {
   timezone?: string;
   /** Feature-flag keys the admin console has switched on for this tenant. */
   features?: string[];
+  /** True until the user replaces an admin-handed-over password. */
+  mustChangePassword?: boolean;
+}
+
+/** Where the signed-in user is in onboarding. Derived from real activity. */
+export interface OnboardingState {
+  /** No bookings yet — treated as a new user, per the product rule. */
+  isNewUser: boolean;
+  bookings: number;
+  tourDone: boolean;
+  steps: {
+    tour: boolean;
+    profilePhoto: boolean;
+    workLocation: boolean;
+    firstBooking: boolean;
+  };
 }
 
 export interface BusinessHours { start: string; end: string; days: number[] }

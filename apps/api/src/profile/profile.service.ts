@@ -32,6 +32,51 @@ export class ProfileService {
     return user;
   }
 
+  /**
+   * Onboarding state for the signed-in user.
+   *
+   * "New user" is defined by behaviour, not by an age or a flag: somebody who
+   * has never booked anything has not really started using the platform, so
+   * they keep getting the getting-started guidance until they do. The tour's
+   * own done/not-done lives on the user row so it follows them across devices.
+   */
+  async onboarding() {
+    const id = this.me();
+    const [user, bookings, workLocations] = await Promise.all([
+      this.prisma.scoped.user.findUnique({
+        where: { id },
+        select: { onboardedAt: true, avatarUrl: true, department: true },
+      }),
+      this.prisma.scoped.booking.count({
+        where: { OR: [{ principalId: id }, { bookerId: id }] },
+      }),
+      this.prisma.scoped.workLocationLog.count({ where: { userId: id } }),
+    ]);
+    if (!user) throw new NotFoundException('User not found.');
+
+    return {
+      isNewUser: bookings === 0,
+      bookings,
+      tourDone: Boolean(user.onboardedAt),
+      steps: {
+        tour: Boolean(user.onboardedAt),
+        profilePhoto: Boolean(user.avatarUrl),
+        workLocation: workLocations > 0,
+        firstBooking: bookings > 0,
+      },
+    };
+  }
+
+  /** Mark the welcome tour finished (or deliberately skipped). */
+  async completeOnboarding() {
+    const id = this.me();
+    await this.prisma.scoped.user.update({
+      where: { id },
+      data: { onboardedAt: new Date() },
+    });
+    return { onboarded: true };
+  }
+
   async update(dto: UpdateProfileDto) {
     const id = this.me();
 
@@ -99,7 +144,8 @@ export class ProfileService {
 
     await this.prisma.scoped.user.update({
       where: { id },
-      data: { passwordHash: await hashPassword(dto.newPassword) },
+      // The password is now the user's own, so the forced-change gate lifts.
+      data: { passwordHash: await hashPassword(dto.newPassword), mustChangePassword: false },
     });
     await this.audit.log({ action: 'profile.password_change', entity: 'User', entityId: id });
 

@@ -8,6 +8,7 @@ import type { ApprovalStep } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import WelcomeTour from '@/components/WelcomeTour';
+import ForcePasswordChange from '@/components/ForcePasswordChange';
 
 const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'],
@@ -62,6 +63,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [menuOpen]);
 
   if (!ready || !user) return <div className="empty">{t('common.loading')}</div>;
+
+  // An admin-handed-over password must be replaced before anything else is
+  // reachable — rendered instead of the app, not over it, so there is no way
+  // to click past it.
+  if (user.mustChangePassword) return <ForcePasswordChange />;
 
   const titleKey = TITLES.find(([p]) => path.startsWith(p))?.[1] ?? 'nav.dashboard';
   return (

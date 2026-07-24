@@ -176,6 +176,8 @@ export class AuthService {
           languagePref: true,
           department: true,
           tenantId: true,
+          // Gates the portal on a change-password screen at first sign-in.
+          mustChangePassword: true,
           // The portal renders every time on this clock; branding is not a
           // reliable carrier for it (shared-URL hosts resolve no tenant).
           tenant: {

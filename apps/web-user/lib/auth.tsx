@@ -19,11 +19,14 @@ interface AuthCtx {
   logout: () => void;
   /** Theme the page for a workspace slug typed on the login screen. */
   previewWorkspace: (slug: string) => Promise<boolean>;
+  /** Re-read /auth/me — e.g. after a forced password change lifts the gate. */
+  refresh: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx>({
   user: null, branding: null, ready: false,
   login: async () => {}, logout: () => {}, previewWorkspace: async () => false,
+  refresh: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -109,8 +112,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [loadBranding],
   );
 
+  const refresh = useCallback(async () => {
+    if (!tokenStore.access) return;
+    try {
+      const me = await api.get<AuthUser>('/auth/me');
+      setTenantTz(me.timezone);
+      setUser(me);
+    } catch { /* keep the current session; the next call will surface a real failure */ }
+  }, []);
+
   return (
-    <Ctx.Provider value={{ user, branding, ready, login, logout, previewWorkspace }}>
+    <Ctx.Provider value={{ user, branding, ready, login, logout, previewWorkspace, refresh }}>
       {children}
     </Ctx.Provider>
   );

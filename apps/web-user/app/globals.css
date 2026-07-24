@@ -211,6 +211,42 @@ button.link { background: none; border: none; padding: 0; font-family: var(--fon
 .slot-chip .slot-dur { display: block; font-size: 10px; font-weight: 600; opacity: .62; margin-top: 1px; }
 .slot-chip.active .slot-dur { opacity: .85; }
 
+/* ---------- Forced password change (first sign-in gate) ---------- */
+.force-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--cream); }
+.force-card { width: 100%; max-width: 430px; padding: 30px 30px 26px; }
+.force-icon { font-size: 34px; text-align: center; margin-bottom: 6px; }
+.force-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 8px;
+  font-family: var(--font-display); }
+.force-sub { font-size: 13px; color: var(--ink-soft); text-align: center; line-height: 1.6;
+  margin-bottom: 22px; }
+.force-submit { width: 100%; margin-top: 4px; }
+.force-signout { width: 100%; margin-top: 8px; font-size: 12.5px; }
+.f-err { font-size: 11.5px; color: var(--red); margin-top: 4px; }
+
+/* ---------- Getting-started checklist (new users) ---------- */
+.gs-card { margin-bottom: 20px; border: 1px solid var(--teal-tint); }
+.gs-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+  margin-bottom: 14px; }
+.gs-title { font-size: 15.5px; font-weight: 700; }
+.gs-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.5; }
+.gs-progress { flex-shrink: 0; font-size: 12px; color: var(--ink-soft); background: var(--teal-tint);
+  border-radius: 100px; padding: 5px 12px; white-space: nowrap; }
+.gs-progress strong { color: var(--teal-dark); font-size: 14px; }
+.gs-list { list-style: none; display: flex; flex-direction: column; }
+.gs-item { display: flex; align-items: center; gap: 11px; padding: 11px 2px;
+  border-top: 1px solid var(--line); font-size: 13.5px; }
+.gs-item:first-child { border-top: none; }
+.gs-check { width: 19px; height: 19px; border-radius: 50%; border: 1.5px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-size: 11px; font-weight: 700; color: #fff; }
+.gs-item.done .gs-check { background: var(--green); border-color: var(--green); }
+.gs-item.done .gs-label { color: var(--ink-soft); text-decoration: line-through; }
+.gs-label { flex: 1; min-width: 0; }
+.gs-done-tag { font-size: 11px; font-weight: 600; color: var(--green); }
+.gs-dismiss { background: none; border: none; cursor: pointer; font: inherit; font-size: 12px;
+  color: var(--ink-soft); text-decoration: underline; margin-top: 12px; padding: 0; }
+
 /* Change-request cards (approvals page) */
 .creq-times { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
 .creq-label { display: inline-block; min-width: 76px; color: var(--ink-soft); font-size: 11.5px;

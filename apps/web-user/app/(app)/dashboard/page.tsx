@@ -4,9 +4,10 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
-import type { Booking } from '@/lib/types';
+import type { Booking, OnboardingState } from '@/lib/types';
 import { fmtTime, fmtDate, todayLocal, localDateKey, getTenantTz } from '@/lib/format';
 import WorkLocationChip from '@/components/WorkLocationChip';
+import GettingStarted from '@/components/GettingStarted';
 
 const STATUS_SWATCH: Record<string, string> = {
   APPROVED: 'available', PENDING: 'pending', WAITLIST: 'pending',
@@ -18,6 +19,8 @@ export default function DashboardPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
+  const [hideGuide, setHideGuide] = useState(false);
   const [err, setErr] = useState(false);
 
   const load = useCallback(() => {
@@ -25,6 +28,19 @@ export default function DashboardPage() {
     api.get<Booking[]>('/bookings').then(setBookings).catch(() => setErr(true));
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const loadOnboarding = useCallback(() => {
+    api.get<OnboardingState>('/me/profile/onboarding')
+      .then(setOnboarding)
+      .catch(() => setOnboarding(null)); // guidance is best-effort
+  }, []);
+  useEffect(() => {
+    loadOnboarding();
+    // The tour marks itself done on the server; refresh so the checklist ticks.
+    const h = () => loadOnboarding();
+    window.addEventListener('mn:onboarding', h);
+    return () => window.removeEventListener('mn:onboarding', h);
+  }, [loadOnboarding]);
 
   const stats = useMemo(() => {
     const tz = getTenantTz();
@@ -63,6 +79,16 @@ export default function DashboardPage() {
         </div>
         <button className="btn hero-cta" onClick={() => router.push('/book')}>{t('dash.quickbook')}</button>
       </div>
+
+      {/* Guidance for someone who has never booked anything. It retires itself
+          once they do, so there is nothing to remember to turn off. */}
+      {onboarding?.isNewUser && !hideGuide ? (
+        <GettingStarted
+          state={onboarding}
+          onTour={() => window.dispatchEvent(new Event('mn:tour'))}
+          onSkip={() => setHideGuide(true)}
+        />
+      ) : null}
 
       <div className="stat-row">
         <div className="card stat"><div className="num">{stats.today}</div><div className="lbl">{t('dash.today')}</div></div>

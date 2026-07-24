@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ProfileService } from './profile.service';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/profile.dto';
@@ -19,5 +19,12 @@ export class ProfileController {
 
   @Put('password') password(@Body() dto: ChangePasswordDto) {
     return this.profile.changePassword(dto);
+  }
+
+  /** Whether this person still needs onboarding, and which steps are left. */
+  @Get('onboarding') onboarding() { return this.profile.onboarding(); }
+
+  @Post('onboarding/done') completeOnboarding() {
+    return this.profile.completeOnboarding();
   }
 }

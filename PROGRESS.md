@@ -1268,6 +1268,42 @@ naturally and the wheel scrolls the whole form. Verified in-browser including
 the longest case (an ONLINE meeting's full-day 06:00–22:30 start list): one
 scrollbar, no trap. CSS-only; web-user builds, tests unchanged.
 
+### T11 — first-sign-in password gate + real new-user onboarding (2026-07-24)
+
+Two gaps reported: a newly created user was never asked to replace the password
+the admin handed them, and there was no onboarding for someone who has not
+started using the platform.
+
+**Forced password change.** New `User.mustChangePassword`, set when an admin
+creates an account *or* resets a password — in both cases someone other than
+the user knows the secret. `/auth/me` carries the flag and the portal renders
+`ForcePasswordChange` **instead of** the app (not over it), so there is nothing
+to click past. The current password is still required: they just signed in with
+it, and asking proves it is really them. Setting their own password clears the
+flag and the app unlocks in place. Existing users were left `false` — nobody
+got locked out by the migration.
+
+**Onboarding driven by behaviour, not a flag.** "New user" = *has never booked*,
+per the product rule, so guidance sticks around until the platform is actually
+used and then retires itself — no dismissal state to manage.
+`GET /me/profile/onboarding` returns `isNewUser` plus a per-step breakdown
+(tour / first booking / work location / profile photo);
+`POST /me/profile/onboarding/done` records the tour.
+
+- **Tour moved off localStorage onto the user row.** The old per-browser flag
+  meant a genuinely new joiner inherited "already onboarded" from whoever used
+  that browser before, while a returning colleague on a new device saw it again.
+  It now auto-opens only for someone who is new *and* has not finished it, and
+  is still reopenable from the header.
+- **`GettingStarted` checklist** on the dashboard: four steps tied to real
+  state, each a link to the place that completes it, with live progress.
+
+Gate: 215/215 (4 new). Verified in-browser end to end: admin creates a user →
+that user signs in → the app is replaced by the password screen → after setting
+their own password the dashboard unlocks, the tour auto-opens, and the checklist
+shows 0/4, ticking to 1/4 once the tour is skipped/finished. Probe account
+removed; the 7 real users are untouched and un-gated.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
