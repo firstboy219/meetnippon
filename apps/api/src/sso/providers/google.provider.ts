@@ -1,9 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { SsoProvider, AuthUrlParams, ExchangeParams, SsoIdentity } from './provider.interface';
+import { decryptSecret } from '../../common/secret-box';
 
 /**
  * Google OAuth (OIDC authorization-code). Inert until credentials are supplied:
- * clientId via flag config, GOOGLE_CLIENT_SECRET via server env.
+ * clientId and the (encrypted) client secret come from the admin console's flag
+ * config; `GOOGLE_CLIENT_SECRET` in the server env remains a fallback.
  */
 export class GoogleProvider implements SsoProvider {
   readonly key = 'google';
@@ -22,7 +24,9 @@ export class GoogleProvider implements SsoProvider {
   }
 
   async exchangeCode({ code, redirectUri, config }: ExchangeParams): Promise<SsoIdentity> {
-    const secret = process.env.GOOGLE_CLIENT_SECRET;
+    const secret = config.clientSecretEnc
+      ? decryptSecret(config.clientSecretEnc as string)
+      : process.env.GOOGLE_CLIENT_SECRET;
     if (!config.clientId || !secret) throw new BadRequestException('Google SSO is not configured.');
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',

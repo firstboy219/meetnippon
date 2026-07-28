@@ -1304,6 +1304,30 @@ their own password the dashboard unlocks, the tour auto-opens, and the checklist
 shows 0/4, ticking to 1/4 once the tour is skipped/finished. Probe account
 removed; the 7 real users are untouched and un-gated.
 
+### T12 — SSO client secret in the admin console + hardening knobs (2026-07-24)
+
+The replica's admin had configured Microsoft SSO but it could not work: the
+client secret was only readable from `MS_CLIENT_SECRET` in the server env, which
+an admin has no way to set from the console.
+
+**Secret now lives in the console, encrypted.** `FeatureFlagService` treats
+`clientSecret` as a write-only field: it encrypts into `clientSecretEnc` with
+the same AES-256-GCM box the SMTP password uses, and **redacts it on every read**
+— `list()`/`get()` return `hasClientSecret: true|false` and never the value in
+any form. A blank submission **keeps** the stored secret (the console never
+receives it, so an unrelated edit would otherwise wipe it); typing a new one
+replaces it. `configFor()` still returns the encrypted value so providers can
+decrypt. Both Microsoft and Google providers read config first and fall back to
+the env var, so existing deployments keep working.
+
+**Hardening knobs surfaced in the UI** (they existed in the resolver but had no
+input): `authority` (Azure Directory/tenant GUID — restricts sign-in to one
+directory; blank = work accounts from ANY organisation), an explicit
+`redirectUri`, and a hint spelling out what `autoProvision` really means.
+
+Gate: 219/219 (4 new: encrypted at rest + never echoed, blank-keeps, retype-
+replaces, configFor still decryptable).
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

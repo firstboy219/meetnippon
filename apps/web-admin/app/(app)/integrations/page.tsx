@@ -85,7 +85,29 @@ export default function IntegrationsPage() {
                   <div className="f-group"><label className="f-label">{t('int.client_id')}</label>
                     <input className="f-input" value={f.config?.clientId ?? ''} onChange={(e) => patchConfig(c.key, { clientId: e.target.value })} placeholder={t('int.client_id_ph')} />
                   </div>
+                  {/* Write-only: the API never sends a stored secret back, so an
+                      empty box means "unchanged", not "cleared". */}
+                  <div className="f-group"><label className="f-label">{t('int.client_secret')}</label>
+                    <input className="f-input" type="password" autoComplete="new-password"
+                      value={f.config?.clientSecret ?? ''}
+                      onChange={(e) => patchConfig(c.key, { clientSecret: e.target.value })}
+                      placeholder={f.config?.hasClientSecret ? t('int.secret_set') : t('int.client_secret_ph')} />
+                    <div className="f-hint">
+                      {f.config?.hasClientSecret ? t('int.secret_set_hint') : t('int.client_secret_hint')}
+                    </div>
+                  </div>
+                  {c.key === 'sso_microsoft' ? (
+                    <div className="f-group"><label className="f-label">{t('int.authority')}</label>
+                      <input className="f-input" value={f.config?.authority ?? ''} onChange={(e) => patchConfig(c.key, { authority: e.target.value })} placeholder={t('int.authority_ph')} />
+                      <div className="f-hint">{t('int.authority_hint')}</div>
+                    </div>
+                  ) : null}
+                  <div className="f-group"><label className="f-label">{t('int.redirect_uri')}</label>
+                    <input className="f-input" value={f.config?.redirectUri ?? ''} onChange={(e) => patchConfig(c.key, { redirectUri: e.target.value })} placeholder={t('int.redirect_uri_ph')} />
+                    <div className="f-hint">{t('int.redirect_uri_hint')}</div>
+                  </div>
                   <label className="f-check"><input type="checkbox" checked={f.config?.autoProvision ?? true} onChange={(e) => patchConfig(c.key, { autoProvision: e.target.checked })} /> {t('int.auto_provision')}</label>
+                  <div className="f-hint" style={{ marginBottom: 10 }}>{t('int.auto_provision_hint')}</div>
                 </>
               ) : null}
               <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => save(c.key)}>{t('common.save')}</button>
