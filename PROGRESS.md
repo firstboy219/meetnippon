@@ -1395,6 +1395,33 @@ restart. Env values remain the fallback.
 
 Gate: 225/225. Migration `20260728070419_tenant_session_settings`.
 
+### T15 — user CRUD completed + self-service sign-up approval (2026-07-28)
+
+**Users page is now full CRUD.** It had create/activate/deactivate and an inline
+role dropdown; it now also has a proper **Edit** modal (name, role, position,
+language — with an admin's own role locked so they cannot demote themselves out
+of the console) and **Delete**. Deletion is refused when the person has bookings:
+those rows carry who reserved the room, and cascading them would quietly rewrite
+history other people rely on, so the error points at deactivation instead.
+
+**Sign-up approval, inside the Users page.** Someone whose address is on a
+verified company domain (nipseapaint.com / nipponpaint-indonesia.com) can hit
+"First time here? Activate your account" even though no admin ever created their
+account. Previously that silently did nothing. Now the attempt is parked as a
+`RegistrationRequest` and surfaces in a **"Waiting for approval"** panel above
+the roster, with admins notified in-app.
+
+The security line: **a verified domain earns a place in the queue, never an
+account.** Nothing that can sign in exists until an admin approves — at which
+point they fill in name/position/role (the request only carried an email) and
+the person gets the same one-time activation link as a CSV import. Rejected rows
+are kept, not deleted, so the same address cannot simply re-queue itself.
+
+Gate: 231/231 (6 new: parked-not-created, non-verified domain ignored, no
+duplicate/rejected re-queue, approve creates + mails, delete blocked by history,
+no self-deletion). Migration `20260728072821_registration_requests`.
+Four older specs needed AuthService's new NotificationService argument.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

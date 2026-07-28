@@ -149,6 +149,7 @@ model Tenant {
   externalApprovalTasks ExternalApprovalTask[]
   subdomainRedirects SubdomainRedirect[]
   bookingChangeRequests BookingChangeRequest[]
+  registrationRequests  RegistrationRequest[]
 }
 
 model TenantDomain {
@@ -486,6 +487,28 @@ model BookingChangeRequest {
   @@index([tenantId])
   @@index([tenantId, bookingId])
   @@index([tenantId, requesterId])
+}
+
+/// Someone from a verified company domain tried to activate an account that an
+/// admin never created. Rather than silently refusing (they are plainly staff)
+/// or silently admitting them (nobody vetted them), the attempt is parked here
+/// for an admin to approve or reject on the Users page.
+model RegistrationRequest {
+  id         String           @id @default(cuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email      String
+  fullName   String?
+  department String?
+  status     ApprovalDecision @default(PENDING)
+  note       String?
+  decidedAt  DateTime?
+  decidedById String?
+  createdAt  DateTime         @default(now())
+
+  /// One open row per address — repeated attempts must not stack up.
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
 }
 
 model ApprovalStep {

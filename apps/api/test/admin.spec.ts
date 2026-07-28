@@ -10,6 +10,7 @@ import { LocationService } from '../src/admin/location.service';
 import { ResourceAdminService } from '../src/admin/resource-admin.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
 import { AuthService } from '../src/auth/auth.service';
+import { NotificationService } from '../src/notification/notification.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { JwtService } from '@nestjs/jwt';
 import { BrandingService } from '../src/admin/branding.service';
@@ -31,8 +32,9 @@ const loc = new LocationService(prisma, audit);
 const resAdmin = new ResourceAdminService(prisma, audit, plan);
 const mail = new TestMailService();
 const adminCfg = new ConfigService({ JWT_ACCESS_SECRET: 'a'.repeat(64), JWT_REFRESH_SECRET: 'b'.repeat(64) });
+const specNotifications = new NotificationService(prisma, flags);
 const adminAuth = new AuthService(prisma, new JwtService({}), adminCfg, audit,
-  new TenantResolverService(prisma, adminCfg), mail);
+  new TenantResolverService(prisma, adminCfg), mail, specNotifications);
 const users = new UserAdminService(prisma, audit, plan, mail, adminCfg, adminAuth);
 const branding = new BrandingService(prisma, audit);
 

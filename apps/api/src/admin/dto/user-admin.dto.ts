@@ -36,6 +36,17 @@ export class ResetPasswordDto {
   @IsString() @MinLength(8) password!: string;
 }
 
+/** Admin fills in the details the sign-up attempt could not carry. */
+export class ApproveRegistrationDto {
+  @IsString() @MaxLength(200) fullName!: string;
+  @IsOptional() @IsString() @MaxLength(200) department?: string;
+  @IsOptional() @IsIn(['ADMIN', 'APPROVER', 'EMPLOYEE']) role?: 'ADMIN' | 'APPROVER' | 'EMPLOYEE';
+}
+
+export class RejectRegistrationDto {
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
 /** One CSV row: the template is deliberately just name, email, position. */
 export class ImportUserRowDto {
   @IsString() @MaxLength(200) fullName!: string;

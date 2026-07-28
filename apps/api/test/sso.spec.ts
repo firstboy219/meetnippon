@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuthService } from '../src/auth/auth.service';
+import { NotificationService } from '../src/notification/notification.service';
 import { TestMailService } from './helpers/test-mail';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
@@ -25,8 +26,9 @@ const config = new ConfigService({
 });
 const audit = new AuditService(prisma);
 const mail = new TestMailService();
-const auth = new AuthService(prisma, jwt, config, audit, new TenantResolverService(prisma, config), mail);
 const flags = new FeatureFlagService(prisma, audit);
+const specNotifications = new NotificationService(prisma, flags);
+const auth = new AuthService(prisma, jwt, config, audit, new TenantResolverService(prisma, config), mail, specNotifications);
 const resolver = new TenantResolverService(prisma, config);
 const sso = new SsoService(prisma, jwt, config, audit, auth, flags, resolver);
 

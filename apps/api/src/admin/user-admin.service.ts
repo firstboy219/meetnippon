@@ -18,6 +18,7 @@ import {
   SetActiveDto,
   ResetPasswordDto,
   ImportUsersDto,
+  ApproveRegistrationDto,
 } from './dto/user-admin.dto';
 import { AuthService } from '../auth/auth.service';
 
@@ -220,6 +221,102 @@ export class UserAdminService {
     });
     await this.audit.log({ action: 'user.reset_password', entity: 'User', entityId: id });
     return { updated: true };
+  }
+
+  /** Self-service sign-up attempts waiting on an admin. */
+  listRegistrationRequests() {
+    return this.prisma.scoped.registrationRequest.findMany({
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * Approve a request: create the account and email the activation link.
+   *
+   * The admin supplies name/position/role here — the request only carried an
+   * address, and a roster entry with a blank name helps nobody.
+   */
+  async approveRegistration(id: string, dto: ApproveRegistrationDto) {
+    const tenantId = getTenantStore()?.tenantId as string;
+    const req = await this.prisma.scoped.registrationRequest.findUnique({ where: { id } });
+    if (!req) throw new NotFoundException('Request not found.');
+    if (req.status !== 'PENDING') throw new BadRequestException('This request has already been decided.');
+
+    const clash = await this.prisma.scoped.user.findFirst({ where: { email: req.email } });
+    if (clash) throw new BadRequestException('An account with this email already exists.');
+    await this.plan.assertCanAddUser(tenantId);
+
+    const user = await this.prisma.scoped.user.create({
+      data: {
+        email: req.email,
+        fullName: dto.fullName.trim(),
+        role: dto.role ?? 'EMPLOYEE',
+        department: dto.department?.trim() || null,
+        languagePref: 'EN',
+        // Same as an imported account: no password, activation link only.
+        passwordHash: null,
+        mustChangePassword: false,
+      } as any,
+      select: SAFE_SELECT,
+    });
+
+    await this.prisma.scoped.registrationRequest.update({
+      where: { id },
+      data: { status: 'APPROVED', decidedAt: new Date(), decidedById: getTenantStore()?.userId as string },
+    });
+    await this.auth.sendActivationEmail({
+      id: user.id, tenantId, email: user.email, fullName: user.fullName,
+    });
+    await this.audit.log({
+      action: 'registration.approved', entity: 'User', entityId: user.id, metadata: { email: req.email },
+    });
+    return user;
+  }
+
+  async rejectRegistration(id: string, note?: string) {
+    const req = await this.prisma.scoped.registrationRequest.findUnique({ where: { id } });
+    if (!req) throw new NotFoundException('Request not found.');
+    if (req.status !== 'PENDING') throw new BadRequestException('This request has already been decided.');
+    // Kept (not deleted) so the same address cannot simply re-queue itself.
+    await this.prisma.scoped.registrationRequest.update({
+      where: { id },
+      data: {
+        status: 'REJECTED', note: note?.trim() || null,
+        decidedAt: new Date(), decidedById: getTenantStore()?.userId as string,
+      },
+    });
+    await this.audit.log({
+      action: 'registration.rejected', entity: 'RegistrationRequest', entityId: id, metadata: { email: req.email },
+    });
+    return { rejected: true };
+  }
+
+  /**
+   * Remove an account.
+   *
+   * Refused when the person has bookings: those rows carry who reserved the
+   * room, and cascading them away would silently rewrite the history other
+   * people rely on. Deactivation is the right tool there, so the error says so.
+   */
+  async remove(id: string) {
+    const user = await this.mustExist(id);
+    if (id === getTenantStore()?.userId) {
+      throw new BadRequestException('You cannot delete your own account.');
+    }
+    const bookings = await this.prisma.scoped.booking.count({
+      where: { OR: [{ principalId: id }, { bookerId: id }] },
+    });
+    if (bookings > 0) {
+      throw new BadRequestException(
+        `This person has ${bookings} booking(s) on record. Deactivate the account instead so the history stays intact.`,
+      );
+    }
+    await this.prisma.scoped.user.delete({ where: { id } });
+    await this.audit.log({
+      action: 'user.delete', entity: 'User', entityId: id, metadata: { email: user.email },
+    });
+    return { deleted: true };
   }
 
   private async mustExist(id: string) {

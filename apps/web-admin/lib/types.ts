@@ -30,6 +30,16 @@ export interface AdminResource {
   floorId?: string | null; floor?: { name: string } | null;
 }
 
+/** A self-service sign-up attempt from a verified company domain. */
+export interface RegistrationRequest {
+  id: string;
+  email: string;
+  fullName: string | null;
+  department: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+}
+
 export interface AdminOffice {
   id: string; name: string; address: string | null;
   lat: number | null; lng: number | null;

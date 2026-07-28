@@ -20,6 +20,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'BookingPolicy',
   'Booking',
   'BookingChangeRequest',
+  'RegistrationRequest',
   'ApprovalStep',
   'ExternalApprovalTask',
   'Recording',

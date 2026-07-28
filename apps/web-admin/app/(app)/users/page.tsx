@@ -4,7 +4,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
-import type { AdminUser, Page, UserRole } from '@/lib/types';
+import type { AdminUser, Page, RegistrationRequest, UserRole } from '@/lib/types';
+import { fmtDateTime } from '@/lib/format';
 import { ConfirmModal, Modal } from '@/components/Modal';
 import Pager from '@/components/Pager';
 import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
@@ -25,6 +26,11 @@ export default function UsersPage() {
   const [err, setErr] = useState(false);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [removing, setRemoving] = useState<AdminUser | null>(null);
+  const [requests, setRequests] = useState<RegistrationRequest[]>([]);
+  const [approving, setApproving] = useState<RegistrationRequest | null>(null);
+  const [rejecting, setRejecting] = useState<RegistrationRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const [roleReq, setRoleReq] = useState<{ id: string; role: UserRole } | null>(null);
   const [deactivate, setDeactivate] = useState<AdminUser | null>(null);
@@ -46,6 +52,36 @@ export default function UsersPage() {
       .then(setData).catch(() => setErr(true)).finally(() => setLoading(false));
   }, [page, term, role, active]);
   useEffect(() => { load(); }, [load]);
+
+  // People from a verified company domain who tried to activate an account
+  // nobody created for them — they wait here for a decision.
+  const loadRequests = useCallback(() => {
+    api.get<RegistrationRequest[]>('/admin/users/requests')
+      .then(setRequests).catch(() => setRequests([]));
+  }, []);
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  async function removeUser(u: AdminUser) {
+    setBusy(true);
+    try {
+      await api.del(`/admin/users/${u.id}`);
+      push(t('users.deleted'), 'success');
+      setRemoving(null);
+      load();
+    } catch (e: any) { push(e?.message || t('common.delete_failed'), 'error'); }
+    finally { setBusy(false); }
+  }
+
+  async function rejectRequest(r: RegistrationRequest) {
+    setBusy(true);
+    try {
+      await api.post(`/admin/users/requests/${r.id}/reject`, {});
+      push(t('req.rejected'), 'success');
+      setRejecting(null);
+      loadRequests();
+    } catch (e: any) { push(e?.message || t('common.save_failed'), 'error'); }
+    finally { setBusy(false); }
+  }
 
   const rows = data?.items ?? [];
   const filtered = Boolean(term || role || active);
@@ -113,6 +149,40 @@ export default function UsersPage() {
         ) : null}
       </div>
 
+      {/* Sign-up attempts from company domains, waiting on a decision. Shown
+          above the roster because it is the only thing here that is blocking
+          somebody from working. */}
+      {requests.length > 0 ? (
+        <div className="card req-card">
+          <div className="section-head">
+            <div>
+              <div className="card-title">{t('req.title')}</div>
+              <div className="card-sub">{t('req.sub')}</div>
+            </div>
+            <span className="badge amber">{requests.length}</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>{t('th.email')}</th><th>{t('req.asked')}</th><th></th></tr></thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.email}</td>
+                    <td>{fmtDateTime(r.createdAt)}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn btn-primary btn-sm" onClick={() => setApproving(r)}>{t('req.approve')}</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setRejecting(r)}>{t('req.reject')}</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -131,10 +201,14 @@ export default function UsersPage() {
                   <td>{u.department ?? '—'}</td>
                   <td><span className={`badge ${u.isActive ? 'green' : 'grey'}`}>{u.isActive ? t('status.ACTIVE') : t('status.INACTIVE')}</span></td>
                   <td>
-                    <button className={`btn btn-sm ${u.isActive ? 'btn-danger' : 'btn-ghost'}`}
-                      onClick={() => (u.isActive ? setDeactivate(u) : setActive(u, true))}>
-                      {u.isActive ? t('users.deactivate') : t('users.activate')}
-                    </button>
+                    <div className="row-actions">
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(u)}>{t('common.edit')}</button>
+                      <button className={`btn btn-sm ${u.isActive ? 'btn-ghost' : 'btn-ghost'}`}
+                        onClick={() => (u.isActive ? setDeactivate(u) : setActive(u, true))}>
+                        {u.isActive ? t('users.deactivate') : t('users.activate')}
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={() => setRemoving(u)}>{t('common.delete')}</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -160,7 +234,149 @@ export default function UsersPage() {
           confirmLabel={t('users.deactivate')} busy={busy}
           onClose={() => setDeactivate(null)} onConfirm={() => setActive(deactivate, false)} />
       ) : null}
+      {editing ? (
+        <EditUserModal user={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
+      ) : null}
+      {removing ? (
+        <ConfirmModal title={t('users.confirm_delete_title')}
+          body={t('users.confirm_delete_body').replace('{name}', removing.fullName)}
+          confirmLabel={t('common.delete')} busy={busy}
+          onClose={() => setRemoving(null)} onConfirm={() => removeUser(removing)} />
+      ) : null}
+      {approving ? (
+        <ApproveRequestModal req={approving} onClose={() => setApproving(null)}
+          onDone={() => { setApproving(null); loadRequests(); load(); }} />
+      ) : null}
+      {rejecting ? (
+        <ConfirmModal title={t('req.confirm_reject_title')}
+          body={t('req.confirm_reject_body').replace('{email}', rejecting.email)}
+          confirmLabel={t('req.reject')} busy={busy}
+          onClose={() => setRejecting(null)} onConfirm={() => rejectRequest(rejecting)} />
+      ) : null}
     </div>
+  );
+}
+
+/** Full edit of an existing account — name, role, position, language. */
+function EditUserModal({ user, onClose, onSaved }: {
+  user: AdminUser; onClose: () => void; onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const { push } = useToast();
+  const { user: me } = useAuth();
+  const [fullName, setFullName] = useState(user.fullName);
+  const [role, setRole] = useState<UserRole>(user.role);
+  const [department, setDepartment] = useState(user.department ?? '');
+  const [languagePref, setLanguagePref] = useState(user.languagePref ?? 'EN');
+  const [busy, setBusy] = useState(false);
+  const isSelf = me?.id === user.id;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${user.id}`, {
+        fullName: fullName.trim(),
+        // Changing your own role would let an admin lock themselves out.
+        ...(isSelf ? {} : { role }),
+        department: department.trim() || undefined,
+        languagePref,
+      });
+      push(t('users.updated'), 'success');
+      onSaved();
+    } catch (e: any) { push(e?.message || t('common.update_failed'), 'error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title={t('users.edit_title')} onClose={onClose}
+      formId="user-edit-form" submitLabel={t('common.save')} busy={busy}>
+      <form id="user-edit-form" onSubmit={save}>
+        <div className="f-group"><label className="f-label">{t('th.email')}</label>
+          <input className="f-input" value={user.email} readOnly disabled />
+          <div className="f-hint">{t('users.email_locked')}</div>
+        </div>
+        <div className="f-group"><label className="f-label">{t('users.full_name')}</label>
+          <input className="f-input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+        </div>
+        <div className="f-row2">
+          <div className="f-group"><label className="f-label">{t('th.role')}</label>
+            <select className="f-select" value={role} disabled={isSelf}
+              onChange={(e) => setRole(e.target.value as UserRole)}>
+              {ROLES.map((r) => <option key={r} value={r}>{t(`role.${r}`)}</option>)}
+            </select>
+            {isSelf ? <div className="f-hint">{t('users.self_role')}</div> : null}
+          </div>
+          <div className="f-group"><label className="f-label">{t('users.department')}</label>
+            <input className="f-input" value={department} onChange={(e) => setDepartment(e.target.value)} />
+          </div>
+        </div>
+        <div className="f-group"><label className="f-label">{t('users.language')}</label>
+          <select className="f-select" value={languagePref} onChange={(e) => setLanguagePref(e.target.value as 'EN' | 'ID')}>
+            <option value="EN">English</option>
+            <option value="ID">Bahasa Indonesia</option>
+          </select>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Approve a self-service sign-up. The request only carried an email address,
+ * so the admin supplies the details a roster entry needs before the account
+ * exists at all.
+ */
+function ApproveRequestModal({ req, onClose, onDone }: {
+  req: RegistrationRequest; onClose: () => void; onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const { push } = useToast();
+  // A sensible starting point from the address; the admin corrects it.
+  const guess = req.email.split('@')[0].replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const [fullName, setFullName] = useState(req.fullName ?? guess);
+  const [department, setDepartment] = useState(req.department ?? '');
+  const [role, setRole] = useState<UserRole>('EMPLOYEE');
+  const [busy, setBusy] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.post(`/admin/users/requests/${req.id}/approve`, {
+        fullName: fullName.trim(), department: department.trim() || undefined, role,
+      });
+      push(t('req.approved'), 'success');
+      onDone();
+    } catch (e: any) { push(e?.message || t('common.save_failed'), 'error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title={t('req.approve_title')} onClose={onClose}
+      formId="req-approve-form" submitLabel={t('req.approve_submit')} busy={busy}>
+      <form id="req-approve-form" onSubmit={save}>
+        <div className="info-box">{t('req.approve_info')}</div>
+        <div className="f-group"><label className="f-label">{t('th.email')}</label>
+          <input className="f-input" value={req.email} readOnly disabled />
+        </div>
+        <div className="f-group"><label className="f-label">{t('users.full_name')}</label>
+          <input className="f-input" value={fullName} onChange={(e) => setFullName(e.target.value)} required autoFocus />
+        </div>
+        <div className="f-row2">
+          <div className="f-group"><label className="f-label">{t('th.role')}</label>
+            <select className="f-select" value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+              {ROLES.map((r) => <option key={r} value={r}>{t(`role.${r}`)}</option>)}
+            </select>
+          </div>
+          <div className="f-group"><label className="f-label">{t('users.department')}</label>
+            <input className="f-input" value={department} onChange={(e) => setDepartment(e.target.value)} />
+          </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

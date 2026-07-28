@@ -14,6 +14,7 @@ import { hashPassword, verifyPassword } from './password.util';
 import { LoginDto } from './dto/login.dto';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { MailService } from '../mail/mail.service';
+import { NotificationService } from '../notification/notification.service';
 
 /** How long an activation link stays usable. */
 const ACTIVATION_TTL_MS = 7 * 24 * 3600_000;
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly resolver: TenantResolverService,
     private readonly mail: MailService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -100,15 +102,71 @@ export class AuthService {
     if (!tenant && tenantSlug) tenant = await this.resolver.resolveBySlug(tenantSlug);
     if (!tenant) return;
 
+    const addr = email.trim().toLowerCase();
     const user = await runUnscoped(() =>
       this.prisma.user.findUnique({
-        where: { tenantId_email: { tenantId: tenant!.tenantId, email: email.trim().toLowerCase() } },
+        where: { tenantId_email: { tenantId: tenant!.tenantId, email: addr } },
       }),
     );
+
+    if (!user) {
+      // Nobody by that address. If it is one of the workspace's own verified
+      // domains the person is plainly staff, so park the attempt for an admin
+      // to approve rather than refusing someone who genuinely works here.
+      await this.parkRegistration(tenant.tenantId, addr);
+      return;
+    }
     // Only accounts that have never set a password can be activated this way;
     // otherwise this would be an unauthenticated password-reset for anyone.
-    if (!user || !user.isActive || user.passwordHash) return;
+    if (!user.isActive || user.passwordHash) return;
     await this.sendActivationEmail(user);
+  }
+
+  /**
+   * Record a self-service sign-up attempt from a company domain.
+   *
+   * Deliberately creates nothing that can sign in — only a request an admin has
+   * to act on, so the domain check alone never grants access.
+   */
+  private async parkRegistration(tenantId: string, email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) return;
+    const allowed = await runUnscoped(() =>
+      this.prisma.tenantDomain.findFirst({
+        where: { tenantId, domain, status: 'VERIFIED' },
+      }),
+    );
+    if (!allowed) return;
+
+    const existing = await runUnscoped(() =>
+      this.prisma.registrationRequest.findUnique({
+        where: { tenantId_email: { tenantId, email } },
+      }),
+    );
+    // A rejected address should not be able to re-queue itself by retrying.
+    if (existing) return;
+
+    await runUnscoped(() =>
+      this.prisma.registrationRequest.create({ data: { tenantId, email } as any }),
+    );
+    await runWithTenant({ tenantId, userId: 'system', role: 'ADMIN' }, () =>
+      this.audit.log({ action: 'registration.requested', entity: 'RegistrationRequest', metadata: { email } }),
+    );
+
+    // Tell the admins there is something waiting.
+    const admins = await runUnscoped(() =>
+      this.prisma.user.findMany({
+        where: { tenantId, role: 'ADMIN', isActive: true },
+        select: { id: true, email: true },
+      }),
+    );
+    for (const a of admins) {
+      await this.notifications.notify(tenantId, a.id, {
+        type: 'approval',
+        title: `${email} is asking to join the workspace`,
+        deepLink: '/users',
+      });
+    }
   }
 
   /** Redeem an activation token: set the first password and sign the user in. */

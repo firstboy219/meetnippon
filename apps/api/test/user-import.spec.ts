@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuthService } from '../src/auth/auth.service';
+import { NotificationService } from '../src/notification/notification.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
 import { PlanService } from '../src/billing/plan.service';
@@ -33,8 +34,9 @@ const config = new ConfigService({
 });
 const jwt = new JwtService({});
 const resolver = new TenantResolverService(prisma, config);
-const auth = new AuthService(prisma, jwt, config, audit, resolver, mail);
 const flags = new FeatureFlagService(prisma, audit, config);
+const specNotifications = new NotificationService(prisma, flags);
+const auth = new AuthService(prisma, jwt, config, audit, resolver, mail, specNotifications);
 const plan = new PlanService(prisma, flags);
 const users = new UserAdminService(prisma, audit, plan, mail, config, auth);
 
