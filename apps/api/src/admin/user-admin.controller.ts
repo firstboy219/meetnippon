@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserAdminService } from './user-admin.service';
 import {
-  CreateUserDto, UpdateUserDto, SetActiveDto, ResetPasswordDto,
+  CreateUserDto, UpdateUserDto, SetActiveDto, ResetPasswordDto, ImportUsersDto,
 } from './dto/user-admin.dto';
 import { UserListQueryDto } from './dto/overview-query.dto';
 
@@ -17,6 +17,8 @@ export class UserAdminController {
 
   @Get() list(@Query() q: UserListQueryDto) { return this.svc.list(q); }
   @Post() create(@Body() d: CreateUserDto) { return this.svc.create(d); }
+  /** Bulk roster upload — declared before ':id' routes so the literal wins. */
+  @Post('import') import(@Body() d: ImportUsersDto) { return this.svc.importUsers(d); }
   @Put(':id') update(@Param('id') id: string, @Body() d: UpdateUserDto) { return this.svc.update(id, d); }
   @Put(':id/active') setActive(@Param('id') id: string, @Body() d: SetActiveDto) { return this.svc.setActive(id, d); }
   @Put(':id/password') resetPassword(@Param('id') id: string, @Body() d: ResetPasswordDto) { return this.svc.resetPassword(id, d); }

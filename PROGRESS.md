@@ -1328,6 +1328,44 @@ directory; blank = work accounts from ANY organisation), an explicit
 Gate: 219/219 (4 new: encrypted at rest + never echoed, blank-keeps, retype-
 replaces, configFor still decryptable).
 
+### T13 — CSV roster import with email activation + auto-derived SSO redirect URI (2026-07-24)
+
+**Redirect URI is no longer typed.** It has to match the OAuth app registration
+byte-for-byte and a typo only surfaces as an opaque provider error at the end of
+a sign-in, so it is now derived from `APP_BASE_URL` and shown read-only with a
+copy button ("paste this into your Azure app"). Any stored override is stripped
+on save — a stale copy must not outlive a domain change.
+
+**Bulk user import (name, email, position).** `POST /admin/users/import` takes
+up to 1000 rows; the console parses the CSV client-side (quoted fields, `,`/`;`,
+optional header matched by name in EN/ID) so the admin sees a preview before
+committing, and offers a downloadable template. Rows are processed
+independently and the modal turns into a per-row report — one bad address must
+not discard the other 200. Duplicates within the file, existing accounts, blank
+names and malformed emails each get their own reason.
+
+**Accounts are created with NO password.** Nothing secret travels through a
+spreadsheet or a chat message. Each person is emailed a one-time activation link
+(`/activate?token=…`); only the SHA-256 of the token is stored, so a database
+leak cannot be replayed. Redeeming it sets their first password and signs them
+straight in — `mustChangePassword` stays false because the password was theirs
+from the start.
+
+Security properties, deliberately: `POST /auth/activation/request` answers
+identically whether or not the address exists (otherwise it would be a staff
+directory), refuses accounts that already have a password (otherwise it would be
+an unauthenticated password reset), the token is single-use and expires in 7
+days, and the comparison is constant-time.
+
+Considered and rejected: the literal "type your email, go straight to set
+password" flow — with no proof of identity anyone knowing a colleague's address
+could claim their account first. The emailed link keeps the same "no password
+needed" experience and was the owner's choice once the trade-off was clear.
+
+Gate: 225/225 (6 new). Three older specs needed the new constructor arguments
+(UserAdminService now takes AuthService; AuthService takes MailService).
+Migration `20260728062650_user_activation_token`.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

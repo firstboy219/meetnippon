@@ -10,6 +10,9 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { ProfileService } from '../src/profile/profile.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
+import { AuthService } from '../src/auth/auth.service';
+import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
+import { JwtService } from '@nestjs/jwt';
 import { PlanService } from '../src/billing/plan.service';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { TestMailService } from './helpers/test-mail';
@@ -25,7 +28,9 @@ const mail = new TestMailService();
 const config = new ConfigService({ APP_BASE_URL: 'https://test.local' });
 const flags = new FeatureFlagService(prisma, audit);
 const plan = new PlanService(prisma, flags);
-const users = new UserAdminService(prisma, audit, plan, mail, config);
+const obAuth = new AuthService(prisma, new JwtService({}), config, audit,
+  new TenantResolverService(prisma, config), mail);
+const users = new UserAdminService(prisma, audit, plan, mail, config, obAuth);
 const profile = new ProfileService(prisma, audit, mail);
 
 const asAdmin = <X>(fn: () => Promise<X>) =>

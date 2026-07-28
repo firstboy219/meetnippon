@@ -1,10 +1,15 @@
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEmail,
   IsIn,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -29,4 +34,25 @@ export class SetActiveDto {
 
 export class ResetPasswordDto {
   @IsString() @MinLength(8) password!: string;
+}
+
+/** One CSV row: the template is deliberately just name, email, position. */
+export class ImportUserRowDto {
+  @IsString() @MaxLength(200) fullName!: string;
+  @IsString() @MaxLength(200) email!: string;
+  @IsOptional() @IsString() @MaxLength(200) department?: string;
+}
+
+export class ImportUsersDto {
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => ImportUserRowDto)
+  rows!: ImportUserRowDto[];
+
+  /**
+   * Email each imported person their activation link. Off lets an admin stage
+   * a roster first and invite later.
+   */
+  @IsOptional() @IsBoolean() sendInvites?: boolean;
 }

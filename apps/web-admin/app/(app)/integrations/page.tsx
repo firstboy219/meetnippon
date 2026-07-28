@@ -102,8 +102,18 @@ export default function IntegrationsPage() {
                       <div className="f-hint">{t('int.authority_hint')}</div>
                     </div>
                   ) : null}
+                  {/* Derived by the server, shown only so it can be copied into
+                      the provider's app registration — never typed by hand. */}
                   <div className="f-group"><label className="f-label">{t('int.redirect_uri')}</label>
-                    <input className="f-input" value={f.config?.redirectUri ?? ''} onChange={(e) => patchConfig(c.key, { redirectUri: e.target.value })} placeholder={t('int.redirect_uri_ph')} />
+                    <div className="copy-row">
+                      <input className="f-input mono" value={f.config?.redirectUri ?? ''} readOnly
+                        onFocus={(e) => e.currentTarget.select()} />
+                      <button type="button" className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(String(f.config?.redirectUri ?? ''));
+                          push(t('int.copied'), 'success');
+                        }}>{t('int.copy')}</button>
+                    </div>
                     <div className="f-hint">{t('int.redirect_uri_hint')}</div>
                   </div>
                   <label className="f-check"><input type="checkbox" checked={f.config?.autoProvision ?? true} onChange={(e) => patchConfig(c.key, { autoProvision: e.target.checked })} /> {t('int.auto_provision')}</label>

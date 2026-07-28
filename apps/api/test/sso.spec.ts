@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuthService } from '../src/auth/auth.service';
+import { TestMailService } from './helpers/test-mail';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { SsoService } from '../src/sso/sso.service';
@@ -23,7 +24,8 @@ const config = new ConfigService({
   JWT_ACCESS_TTL: 900, JWT_REFRESH_TTL: 1000, PLATFORM_BASE_DOMAIN: 'meetnippon.test',
 });
 const audit = new AuditService(prisma);
-const auth = new AuthService(prisma, jwt, config, audit, new TenantResolverService(prisma, config));
+const mail = new TestMailService();
+const auth = new AuthService(prisma, jwt, config, audit, new TenantResolverService(prisma, config), mail);
 const flags = new FeatureFlagService(prisma, audit);
 const resolver = new TenantResolverService(prisma, config);
 const sso = new SsoService(prisma, jwt, config, audit, auth, flags, resolver);

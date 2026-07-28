@@ -11,8 +11,12 @@ import { AdminOverviewController } from './admin-overview.controller';
 import { FeatureFlagController } from './feature-flag.controller';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  // AuthModule for AuthService: the roster import mints activation links, and
+  // that logic belongs with the rest of the sign-in flow, not duplicated here.
+  imports: [AuthModule],
   controllers: [
     LocationController,
     ResourceAdminController,

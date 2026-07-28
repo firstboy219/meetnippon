@@ -245,6 +245,11 @@ model User {
   /// portal blocks on a change screen until the person sets their own, so a
   /// password the admin knows never stays in use.
   mustChangePassword Boolean @default(false)
+  /// SHA-256 of a one-time activation token (bulk-imported accounts start with
+  /// no password). Only the hash is stored, so a database leak cannot be
+  /// replayed as an activation link.
+  activationTokenHash String?
+  activationExpiresAt DateTime?
   /// When the welcome tour was finished or skipped. Stored per user rather than
   /// in localStorage so onboarding follows the person across devices — and so a
   /// colleague's browser does not silently mark them as onboarded.

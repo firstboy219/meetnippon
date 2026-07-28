@@ -17,7 +17,9 @@ import {
   UpdateUserDto,
   SetActiveDto,
   ResetPasswordDto,
+  ImportUsersDto,
 } from './dto/user-admin.dto';
+import { AuthService } from '../auth/auth.service';
 
 const SAFE_SELECT = {
   id: true, email: true, fullName: true, role: true, department: true,
@@ -32,6 +34,7 @@ export class UserAdminService {
     private readonly plan: PlanService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly auth: AuthService,
   ) {}
 
   async list(q: UserListQueryDto = {}) {
@@ -111,6 +114,71 @@ export class UserAdminService {
 
     // Return the temp password only when the admin didn't set one (for handoff).
     return dto.password ? user : { ...user, tempPassword };
+  }
+
+  /**
+   * Bulk-create users from an uploaded roster (name, email, position).
+   *
+   * No passwords are minted: each account starts with none and is reachable
+   * only through a one-time activation link, so nothing secret has to travel
+   * through a spreadsheet or a chat message. Rows are processed independently —
+   * one bad address must not discard the other 200 — and the caller gets a
+   * per-row report.
+   */
+  async importUsers(dto: ImportUsersDto) {
+    const tenantId = getTenantStore()?.tenantId as string;
+    const created: { email: string; fullName: string }[] = [];
+    const errors: { row: number; email: string; reason: string }[] = [];
+    const seen = new Set<string>();
+
+    for (let i = 0; i < dto.rows.length; i++) {
+      const raw = dto.rows[i];
+      const rowNo = i + 1;
+      const email = (raw.email ?? '').trim().toLowerCase();
+      const fullName = (raw.fullName ?? '').trim();
+      try {
+        if (!fullName) throw new Error('Name is empty.');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Not a valid email address.');
+        // A file that repeats an address would otherwise fail late, on the
+        // unique index, with a far less obvious message.
+        if (seen.has(email)) throw new Error('Duplicated within this file.');
+        seen.add(email);
+
+        const clash = await this.prisma.scoped.user.findFirst({ where: { email } });
+        if (clash) throw new Error('An account with this email already exists.');
+        await this.plan.assertCanAddUser(tenantId);
+
+        const user = await this.prisma.scoped.user.create({
+          data: {
+            email,
+            fullName,
+            role: 'EMPLOYEE',
+            department: raw.department?.trim() || null,
+            languagePref: 'EN',
+            // No password at all: activation is the only way in.
+            passwordHash: null,
+            mustChangePassword: false,
+          } as any,
+          select: SAFE_SELECT,
+        });
+        created.push({ email: user.email, fullName: user.fullName });
+
+        if (dto.sendInvites !== false) {
+          await this.auth.sendActivationEmail({
+            id: user.id, tenantId, email: user.email, fullName: user.fullName,
+          });
+        }
+      } catch (e: any) {
+        errors.push({ row: rowNo, email: email || '(blank)', reason: e?.message ?? 'Could not import.' });
+      }
+    }
+
+    await this.audit.log({
+      action: 'user.import',
+      entity: 'User',
+      metadata: { created: created.length, failed: errors.length, invited: dto.sendInvites !== false },
+    });
+    return { created: created.length, failed: errors.length, users: created, errors };
   }
 
   async update(id: string, dto: UpdateUserDto) {

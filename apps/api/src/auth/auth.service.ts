@@ -10,8 +10,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { runUnscoped, runWithTenant } from '../tenant/tenant-context';
-import { verifyPassword } from './password.util';
+import { hashPassword, verifyPassword } from './password.util';
 import { LoginDto } from './dto/login.dto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { MailService } from '../mail/mail.service';
+
+/** How long an activation link stays usable. */
+const ACTIVATION_TTL_MS = 7 * 24 * 3600_000;
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -21,7 +28,126 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly audit: AuditService,
     private readonly resolver: TenantResolverService,
+    private readonly mail: MailService,
   ) {}
+
+  /**
+   * Mint a one-time activation token for a user, store only its hash, and
+   * return the raw token for the email link.
+   *
+   * Public so the bulk-import path can reuse it — an imported account has no
+   * password, and this is the only way into it.
+   */
+  async issueActivationToken(userId: string): Promise<string> {
+    const raw = randomBytes(32).toString('base64url');
+    await runUnscoped(() =>
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          activationTokenHash: sha256(raw),
+          activationExpiresAt: new Date(Date.now() + ACTIVATION_TTL_MS),
+        },
+      }),
+    );
+    return raw;
+  }
+
+  /** Compose and send the "set your password" email. Fire-and-forget. */
+  async sendActivationEmail(user: { id: string; tenantId: string; email: string; fullName: string }) {
+    const raw = await this.issueActivationToken(user.id);
+    const base = (this.config.get<string>('APP_BASE_URL') || '').replace(/\/+$/, '');
+    const link = `${base}/activate?token=${encodeURIComponent(raw)}`;
+    const tenant = await runUnscoped(() =>
+      this.prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: { name: true, branding: { select: { displayName: true, primaryColor: true } } },
+      }),
+    );
+    const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
+    this.mail.send({
+      tenantId: user.tenantId,
+      to: user.email,
+      subject: `Activate your ${brandName} account`,
+      eyebrow: 'Account activation',
+      heading: `Welcome, ${user.fullName.split(' ')[0]}`,
+      intro: `An account has been created for you at ${brandName}. Set your password to get started — the link is valid for 7 days and can only be used once.`,
+      details: [
+        { label: 'Workspace', value: brandName },
+        { label: 'Sign-in email', value: user.email },
+      ],
+      buttons: [{ label: 'Set my password', url: link, primary: true }],
+      brand: { name: brandName, color: tenant?.branding?.primaryColor },
+      footerNote: 'If you were not expecting this, you can ignore this email — the account cannot be used until a password is set.',
+      text: [
+        `Welcome to ${brandName}.`,
+        '',
+        `An account has been created for you (${user.email}).`,
+        'Set your password using the link below. It expires in 7 days.',
+        '',
+        link,
+      ].join('\n'),
+    });
+  }
+
+  /**
+   * Start activation from the login screen.
+   *
+   * Always resolves the same way whether or not the address exists: replying
+   * "no such user" here would turn this into a directory of who works there.
+   */
+  async requestActivation(email: string, tenantSlug?: string, host?: string): Promise<void> {
+    let tenant = await this.resolver.resolveFromHost(host);
+    if (!tenant && tenantSlug) tenant = await this.resolver.resolveBySlug(tenantSlug);
+    if (!tenant) return;
+
+    const user = await runUnscoped(() =>
+      this.prisma.user.findUnique({
+        where: { tenantId_email: { tenantId: tenant!.tenantId, email: email.trim().toLowerCase() } },
+      }),
+    );
+    // Only accounts that have never set a password can be activated this way;
+    // otherwise this would be an unauthenticated password-reset for anyone.
+    if (!user || !user.isActive || user.passwordHash) return;
+    await this.sendActivationEmail(user);
+  }
+
+  /** Redeem an activation token: set the first password and sign the user in. */
+  async completeActivation(token: string, newPassword: string): Promise<LoginResult> {
+    const hash = sha256(token);
+    const user = await runUnscoped(() =>
+      this.prisma.user.findFirst({ where: { activationTokenHash: hash } }),
+    );
+    const invalid = new BadRequestException('This activation link is invalid or has already been used.');
+    if (!user || !user.activationTokenHash) throw invalid;
+    // Constant-time compare, so a near-miss hash cannot be probed by timing.
+    const a = Buffer.from(user.activationTokenHash);
+    const b = Buffer.from(hash);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) throw invalid;
+    if (!user.activationExpiresAt || user.activationExpiresAt < new Date()) {
+      throw new BadRequestException('This activation link has expired. Ask your administrator to send a new one.');
+    }
+    if (!user.isActive) throw new UnauthorizedException('This account has been deactivated.');
+    if (newPassword.length < 8) throw new BadRequestException('Use at least 8 characters.');
+
+    const passwordHash = await hashPassword(newPassword);
+    const updated = await runUnscoped(() =>
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          // The password is the user's own from the start, so no forced change.
+          mustChangePassword: false,
+          activationTokenHash: null,
+          activationExpiresAt: null,
+        },
+      }),
+    );
+    await runWithTenant(
+      { tenantId: updated.tenantId, userId: updated.id, role: updated.role },
+      () => this.audit.log({ action: 'auth.activation.complete', entity: 'User', entityId: updated.id }),
+    );
+    return this.issueSession(updated as any);
+  }
 
   private async signTokens(payload: AccessTokenPayload) {
     const accessToken = await this.jwt.signAsync(payload, {

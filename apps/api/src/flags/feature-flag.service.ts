@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { runUnscoped } from '../tenant/tenant-context';
@@ -27,7 +28,21 @@ export class FeatureFlagService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * The callback URL the admin must paste into their OAuth app registration.
+   * Derived here (not stored) so the console can show the exact string —
+   * keeping it read-only removes a whole class of silent misconfiguration.
+   */
+  private redirectUriFor(key: string): string | undefined {
+    if (!key.startsWith('sso_')) return undefined;
+    const provider = key.slice(4);
+    const base = (this.config?.get<string>('APP_BASE_URL') || '').trim().replace(/\/+$/, '');
+    const origin = base || `https://${this.config?.get<string>('PLATFORM_BASE_DOMAIN') ?? ''}`;
+    return `${origin}/api/auth/sso/${provider}/callback`;
+  }
 
   /**
    * Strip stored secrets before a config leaves the API.
@@ -47,19 +62,21 @@ export class FeatureFlagService {
     return out;
   }
 
+  private view(f: { key: string; enabled: boolean; config: unknown }): FlagView {
+    const config = this.redact(f.config as Record<string, any>);
+    const uri = this.redirectUriFor(f.key);
+    if (uri) config.redirectUri = uri; // display-only; never read back from storage
+    return { key: f.key, enabled: f.enabled, config };
+  }
+
   async list(): Promise<FlagView[]> {
     const rows = await this.prisma.scoped.tenantFeatureFlag.findMany({ orderBy: { key: 'asc' } });
-    return rows.map((f) => ({
-      key: f.key,
-      enabled: f.enabled,
-      config: this.redact(f.config as Record<string, any>),
-    }));
+    return rows.map((f) => this.view(f));
   }
 
   async get(key: string): Promise<FlagView | null> {
     const f = await this.prisma.scoped.tenantFeatureFlag.findFirst({ where: { key } });
-    if (!f) return null;
-    return { key: f.key, enabled: f.enabled, config: this.redact(f.config as Record<string, any>) };
+    return f ? this.view(f) : null;
   }
 
   /** Cheap enabled-check for a given tenant (used off the request path too). */
@@ -89,6 +106,9 @@ export class FeatureFlagService {
     // unrelated edit) keep what is already saved rather than wiping it.
     const prev = (existing?.config as Record<string, any>) ?? {};
     const next: Record<string, any> = { ...config };
+    // Derived for display only — storing it would let a stale copy override the
+    // real callback URL after the platform domain changes.
+    delete next.redirectUri;
     for (const f of SECRET_FIELDS) {
       const typed = typeof next[f] === 'string' ? (next[f] as string).trim() : '';
       delete next[f];

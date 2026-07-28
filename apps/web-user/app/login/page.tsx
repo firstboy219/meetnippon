@@ -150,6 +150,10 @@ function LoginForm() {
           <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy}>
             {busy ? <span className="spinner" /> : t('login.submit')}
           </button>
+          {/* Bulk-imported accounts have no password at all; this is their way in. */}
+          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12.5 }}>
+            <a href="/activate" className="link">{t('login.first_time')}</a>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0', color: 'var(--ink-soft)', fontSize: 12 }}>
             <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
           </div>

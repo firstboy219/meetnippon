@@ -11,6 +11,7 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { RequestActivationDto, CompleteActivationDto } from './dto/activation.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserCtx } from './decorators/current-user.decorator';
 
@@ -34,5 +35,25 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: CurrentUserCtx) {
     return this.auth.me(user.userId);
+  }
+
+  /**
+   * "First time here" — email a set-password link to an account that has none.
+   *
+   * Deliberately returns the same body whether or not the address exists, so
+   * the endpoint cannot be used to test who has an account here.
+   */
+  @Post('activation/request')
+  @HttpCode(200)
+  async requestActivation(@Body() dto: RequestActivationDto, @Req() req: Request) {
+    await this.auth.requestActivation(dto.email, dto.tenantSlug, req.headers['host']);
+    return { ok: true };
+  }
+
+  /** Redeem the link: set the first password and return a session. */
+  @Post('activation/complete')
+  @HttpCode(200)
+  completeActivation(@Body() dto: CompleteActivationDto) {
+    return this.auth.completeActivation(dto.token, dto.newPassword);
   }
 }

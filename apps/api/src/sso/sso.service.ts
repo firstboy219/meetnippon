@@ -50,10 +50,18 @@ export class SsoService {
     return `sso_${p}`;
   }
 
-  private redirectUri(provider: ProviderKey, config: Record<string, any>) {
-    if (config.redirectUri) return config.redirectUri as string;
-    const base = this.config.get<string>('PLATFORM_BASE_DOMAIN');
-    return `https://${base}/api/auth/sso/${provider}/callback`;
+  /**
+   * The callback URL registered with the provider.
+   *
+   * Always derived, never admin-typed: it has to match the app registration
+   * byte-for-byte, and a mistyped one fails only at the end of a sign-in with
+   * an opaque provider error. `APP_BASE_URL` already carries the scheme the
+   * portal is actually served on; `PLATFORM_BASE_DOMAIN` is the older fallback.
+   */
+  redirectUri(provider: ProviderKey, _config?: Record<string, any>) {
+    const base = (this.config.get<string>('APP_BASE_URL') || '').trim().replace(/\/+$/, '');
+    const origin = base || `https://${this.config.get<string>('PLATFORM_BASE_DOMAIN')}`;
+    return `${origin}/api/auth/sso/${provider}/callback`;
   }
 
   /** Begin an SSO sign-in: returns the provider auth URL (or 'mock:consent'). */
