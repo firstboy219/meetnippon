@@ -346,7 +346,7 @@ const DICT: Record<string, { en: string; id: string }> = {
   },
 
   'int.title': { en: 'Integrations', id: 'Integrasi' },
-  'int.info': { en: 'Providers run in mock mode until real credentials are added. Mock SSO lets you test sign-in by entering an email on a consent prompt. Set mode to live and add a client ID once your Azure/Google app is registered (the client secret is configured on the server).', id: 'Provider berjalan dalam mode mock sampai kredensial asli ditambahkan. SSO mock memungkinkan uji coba masuk dengan memasukkan email pada halaman persetujuan. Ubah mode ke live dan tambahkan Client ID setelah aplikasi Azure/Google Anda terdaftar (client secret dikonfigurasi di server).' },
+  'int.info': { en: 'Providers run in mock mode until real credentials are added. Mock SSO lets you test sign-in by entering an email on a consent prompt. Set mode to live, then add the client ID and secret from your registered Azure/Google app. Secrets are stored encrypted and are never shown again after saving.', id: 'Provider berjalan dalam mode mock sampai kredensial asli ditambahkan. SSO mock memungkinkan uji coba masuk dengan memasukkan email pada halaman persetujuan. Ubah mode ke live, lalu isi Client ID dan Client Secret dari aplikasi Azure/Google Anda. Secret disimpan terenkripsi dan tidak akan ditampilkan lagi setelah disimpan.' },
   'int.enabled': { en: 'Enabled', id: 'Aktifkan' },
   'int.on': { en: 'On', id: 'Aktif' },
   'int.off': { en: 'Off', id: 'Nonaktif' },
