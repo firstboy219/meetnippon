@@ -1366,6 +1366,35 @@ Gate: 225/225 (6 new). Three older specs needed the new constructor arguments
 (UserAdminService now takes AuthService; AuthService takes MailService).
 Migration `20260728062650_user_activation_token`.
 
+### T14 — About & feedback page, and sessions that stop expiring mid-work (2026-07-24)
+
+**About & send feedback** (`/about`, in a new "Help" nav group). States who built
+the platform (IT Enterprise BA Division) and, more usefully, routes reports to
+whoever can act on them: technical faults to ilham.putra@nipseapaint.com, and
+anything about rules/approvals/room policy to GA (hermawan.chandra@nipseapaint.com).
+The form picks the recipient from the category, shows the user which address it
+is going to before they send, sets `replyTo` to the reporter so a reply reaches
+them directly, and attaches the page they were on. Addresses are overridable via
+`SUPPORT_TECH_EMAIL` / `SUPPORT_GA_EMAIL` / `SUPPORT_TEAM` so a fork needs no
+code change.
+
+**Sessions.** The request was "make the session longer"; the actual defect was
+that **the portals never used the refresh token at all** — `request()` threw on
+401, so people were signed out ~15 minutes in while a valid 14-day refresh token
+sat unused in localStorage. Both clients now renew once on a 401 and replay the
+request, sharing a single in-flight promise so a burst of parallel 401s causes
+one renewal rather than five; `retry` guards against a loop when the refresh
+token is dead too. Because the server rotates both tokens, the window slides
+forward while the app is in use instead of expiring at a fixed time.
+
+On top of that the lengths are now **admin-configurable per workspace**
+(`Tenant.sessionDays` default 30, `Tenant.accessTtlMinutes` default 60 — up from
+the old 15-minute env value), edited on the Branding page beside the timezone
+and read at signing time so a change applies on the next renewal with no
+restart. Env values remain the fallback.
+
+Gate: 225/225. Migration `20260728070419_tenant_session_settings`.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.

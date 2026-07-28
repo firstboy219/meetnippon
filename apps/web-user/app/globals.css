@@ -211,6 +211,24 @@ button.link { background: none; border: none; padding: 0; font-family: var(--fon
 .slot-chip .slot-dur { display: block; font-size: 10px; font-weight: 600; opacity: .62; margin-top: 1px; }
 .slot-chip.active .slot-dur { opacity: .85; }
 
+/* ---------- About & feedback ---------- */
+.about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.about-lead { font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; margin-bottom: 16px; }
+.about-row { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.about-key { min-width: 116px; color: var(--ink-soft); }
+.about-val { flex: 1; min-width: 0; word-break: break-word; }
+.about-contact { border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; margin-bottom: 10px; }
+.about-contact-head { font-size: 13.5px; font-weight: 700; margin-bottom: 4px; }
+.about-contact p { font-size: 12.5px; color: var(--ink-soft); line-height: 1.55; margin-bottom: 7px; }
+.cat-list { display: flex; flex-direction: column; gap: 8px; }
+.cat-item { text-align: left; padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
+  background: #fff; cursor: pointer; font: inherit; transition: border-color .12s, background .12s; }
+.cat-item:hover { border-color: var(--teal); }
+.cat-item.active { border-color: var(--teal); background: var(--teal-tint); }
+.cat-label { display: block; font-size: 13.5px; font-weight: 600; }
+.cat-hint { display: block; font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+@media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
+
 /* ---------- Forced password change (first sign-in gate) ---------- */
 .force-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 24px; background: var(--cream); }

@@ -16,6 +16,7 @@ const ICONS: Record<string, React.ReactNode> = {
   '/approvals': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>,
   '/hub': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z" /></svg>,
   '/chat': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4H12a8.5 8.5 0 0 1-4-1L3 20l1.3-3.9A8.4 8.4 0 0 1 3.5 12 8.38 8.38 0 0 1 12 3.6a8.4 8.4 0 0 1 9 7.9z" /></svg>,
+  '/about': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>,
 };
 
 /**
@@ -55,6 +56,10 @@ const GROUPS: { key: string | null; items: NavItem[] }[] = [
       // item would simply never appear.
       { href: '/chat', key: 'nav.chat', flag: 'chat' },
     ],
+  },
+  {
+    key: 'nav.group.help',
+    items: [{ href: '/about', key: 'nav.about' }],
   },
 ];
 

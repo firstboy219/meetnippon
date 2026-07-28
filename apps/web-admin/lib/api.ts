@@ -4,6 +4,7 @@ const REFRESH_KEY = 'mn_admin_refresh';
 
 export const tokenStore = {
   get access() { return typeof window === 'undefined' ? null : localStorage.getItem(ACCESS_KEY); },
+  get refresh() { return typeof window === 'undefined' ? null : localStorage.getItem(REFRESH_KEY); },
   set(a: string, r: string) { localStorage.setItem(ACCESS_KEY, a); localStorage.setItem(REFRESH_KEY, r); },
   clear() { localStorage.removeItem(ACCESS_KEY); localStorage.removeItem(REFRESH_KEY); },
 };
@@ -12,13 +13,49 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, auth = true): Promise<T> {
+/**
+ * Renew the access token, at most once at a time.
+ *
+ * Without this the console signed admins out as soon as the short-lived access
+ * token expired, even though a valid refresh token was sitting unused. The
+ * in-flight promise is shared so parallel 401s trigger one renewal, not many.
+ */
+let renewal: Promise<boolean> | null = null;
+
+function renewAccess(): Promise<boolean> {
+  if (renewal) return renewal;
+  const refreshToken = tokenStore.refresh;
+  if (!refreshToken) return Promise.resolve(false);
+  renewal = fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  })
+    .then(async (res) => {
+      if (!res.ok) return false;
+      const body = await res.json();
+      if (!body?.accessToken) return false;
+      tokenStore.set(body.accessToken, body.refreshToken ?? refreshToken);
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => { renewal = null; });
+  return renewal;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, auth = true, retry = true): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined),
   };
   if (auth && tokenStore.access) headers['Authorization'] = `Bearer ${tokenStore.access}`;
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
+
+  // An expired access token is recoverable: renew once and replay.
+  if (res.status === 401 && auth && retry && tokenStore.refresh) {
+    if (await renewAccess()) return request<T>(path, init, auth, false);
+  }
+
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
   if (!res.ok) {

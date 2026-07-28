@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Tenant" ADD COLUMN     "accessTtlMinutes" INTEGER NOT NULL DEFAULT 60,
+ADD COLUMN     "sessionDays" INTEGER NOT NULL DEFAULT 30;

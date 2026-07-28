@@ -118,6 +118,13 @@ model Tenant {
   /// Defaults to UTC so existing rows keep their previous behaviour; new
   /// workspaces are created as Asia/Jakarta by onboarding.
   timezone    String   @default("UTC")
+  /// How long a signed-in session survives before the person must sign in
+  /// again (the refresh-token lifetime, in days). Admin-configurable.
+  sessionDays Int      @default(30)
+  /// Access-token lifetime in minutes. Kept short because the portal renews it
+  /// silently in the background; it is the refresh window above that decides
+  /// how long someone actually stays signed in.
+  accessTtlMinutes Int @default(60)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

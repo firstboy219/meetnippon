@@ -30,6 +30,7 @@ import { PresenceModule } from './presence/presence.module';
 import { ProfileModule } from './profile/profile.module';
 import { PublicModule } from './public/public.module';
 import { ReminderModule } from './reminder/reminder.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
@@ -69,6 +70,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     ProfileModule,
     PublicModule,
     ReminderModule,
+    FeedbackModule,
     UploadsModule,
     HealthModule,
   ],

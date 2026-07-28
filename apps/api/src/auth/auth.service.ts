@@ -149,16 +149,40 @@ export class AuthService {
     return this.issueSession(updated as any);
   }
 
+  /**
+   * Session lengths, admin-configurable per workspace.
+   *
+   * The env values remain the fallback for anything without a tenant row yet.
+   * Reading them at signing time (rather than at boot) means a change in the
+   * console takes effect on the next renewal, with no restart.
+   */
+  private async sessionTtls(tenantId?: string): Promise<{ accessSec: number; refreshSec: number }> {
+    const envAccess = Number(this.config.get<string>('JWT_ACCESS_TTL') ?? 900);
+    const envRefresh = Number(this.config.get<string>('JWT_REFRESH_TTL') ?? 1209600);
+    if (!tenantId) return { accessSec: envAccess, refreshSec: envRefresh };
+    const t = await runUnscoped(() =>
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { sessionDays: true, accessTtlMinutes: true },
+      }),
+    );
+    return {
+      accessSec: t?.accessTtlMinutes ? t.accessTtlMinutes * 60 : envAccess,
+      refreshSec: t?.sessionDays ? t.sessionDays * 86400 : envRefresh,
+    };
+  }
+
   private async signTokens(payload: AccessTokenPayload) {
+    const { accessSec, refreshSec } = await this.sessionTtls(payload.tenantId);
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.get<string>('JWT_ACCESS_SECRET'),
-      expiresIn: this.config.get<number>('JWT_ACCESS_TTL') ?? 900,
+      expiresIn: accessSec,
     });
     const refreshToken = await this.jwt.signAsync(
       { sub: payload.sub, tenantId: payload.tenantId, typ: 'refresh' },
       {
         secret: this.config.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.config.get<number>('JWT_REFRESH_TTL') ?? 1209600,
+        expiresIn: refreshSec,
       },
     );
     return { accessToken, refreshToken };

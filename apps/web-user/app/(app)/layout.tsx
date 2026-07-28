@@ -22,6 +22,7 @@ const TITLES: [string, string][] = [
   ['/approvals', 'nav.approval'],
   ['/hub', 'nav.hub'],
   ['/chat', 'nav.chat'],
+  ['/about', 'nav.about'],
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

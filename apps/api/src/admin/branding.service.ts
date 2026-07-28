@@ -17,10 +17,18 @@ export class BrandingService {
     const tenantId = getTenantStore()?.tenantId as string;
     const [branding, tenant] = await Promise.all([
       this.prisma.scoped.tenantBranding.findFirst({}),
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { timezone: true, sessionDays: true, accessTtlMinutes: true },
+      }),
     ]);
-    // timezone lives on Tenant, but the admin edits it alongside branding.
-    return { ...(branding ?? {}), timezone: tenant?.timezone ?? 'UTC' };
+    // These live on Tenant, but the admin edits them alongside branding.
+    return {
+      ...(branding ?? {}),
+      timezone: tenant?.timezone ?? 'UTC',
+      sessionDays: tenant?.sessionDays ?? 30,
+      accessTtlMinutes: tenant?.accessTtlMinutes ?? 60,
+    };
   }
 
   async update(dto: UpdateBrandingDto) {
@@ -44,6 +52,19 @@ export class BrandingService {
         where: { id: tenantId },
         data: { timezone: dto.timezone },
       });
+    }
+
+    // Session lengths also live on Tenant. They take effect on the next token
+    // renewal — sessions already issued keep the window they were signed with.
+    if (dto.sessionDays !== undefined || dto.accessTtlMinutes !== undefined) {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          ...(dto.sessionDays !== undefined ? { sessionDays: dto.sessionDays } : {}),
+          ...(dto.accessTtlMinutes !== undefined ? { accessTtlMinutes: dto.accessTtlMinutes } : {}),
+        },
+      });
+      await this.audit.log({ action: 'tenant.session_settings', entity: 'Tenant', entityId: tenantId });
     }
 
     const existing = await this.prisma.scoped.tenantBranding.findFirst({});

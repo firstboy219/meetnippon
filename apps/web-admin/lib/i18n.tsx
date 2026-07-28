@@ -340,6 +340,10 @@ const DICT: Record<string, { en: string; id: string }> = {
   'brand.primary_chip': { en: 'Primary', id: 'Utama' },
   'brand.accent_chip': { en: 'Accent', id: 'Aksen' },
   'brand.timezone': { en: 'Timezone', id: 'Zona waktu' },
+  'brand.session_days': { en: 'Stay signed in for (days)', id: 'Tetap masuk selama (hari)' },
+  'brand.session_days_hint': { en: 'How long before someone has to enter their password again. Applies from the next sign-in or renewal.', id: 'Berapa lama sebelum pengguna harus memasukkan password lagi. Berlaku sejak login atau perpanjangan berikutnya.' },
+  'brand.access_ttl': { en: 'Renew session every (minutes)', id: 'Perpanjang sesi tiap (menit)' },
+  'brand.access_ttl_hint': { en: 'The portal renews the session silently in the background, so people are not interrupted while working.', id: 'Portal memperpanjang sesi secara otomatis di latar belakang, jadi pengguna tidak terputus saat bekerja.' },
   'brand.timezone_hint': {
     en: 'Sets the workspace clock: business hours, weekday rules and daily quotas are evaluated in this zone, and all times are displayed in it.',
     id: 'Menentukan jam workspace: jam kerja, aturan hari kerja, dan kuota harian dihitung pada zona ini, dan semua waktu ditampilkan mengikutinya.',

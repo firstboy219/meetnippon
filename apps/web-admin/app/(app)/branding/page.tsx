@@ -22,6 +22,8 @@ export default function BrandingPage() {
   const [accessMode, setAccessMode] = useState<'SUBDOMAIN' | 'SHARED_URL'>('SHARED_URL');
   const [logoUrl, setLogoUrl] = useState('');
   const [timezone, setTimezone] = useState('UTC');
+  const [sessionDays, setSessionDays] = useState(30);
+  const [accessTtlMinutes, setAccessTtlMinutes] = useState(60);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
@@ -37,6 +39,8 @@ export default function BrandingPage() {
         setAccessMode(b.accessMode ?? 'SHARED_URL');
         setLogoUrl(b.logoUrl ?? '');
         setTimezone(b.timezone ?? 'UTC');
+        setSessionDays(b.sessionDays ?? 30);
+        setAccessTtlMinutes(b.accessTtlMinutes ?? 60);
         setTenantTz(b.timezone);
       }
     }).catch(() => setErr(true)).finally(() => setLoaded(true));
@@ -50,6 +54,8 @@ export default function BrandingPage() {
         displayName: displayName || undefined, primaryColor, accentColor,
         subdomain: subdomain || undefined, accessMode, logoUrl: logoUrl || undefined,
         timezone,
+        sessionDays,
+        accessTtlMinutes,
       });
       setTenantTz(timezone);
       push(t('brand.saved'), 'success');
@@ -97,6 +103,19 @@ export default function BrandingPage() {
               ))}
             </select>
             <div className="f-hint">{t('brand.timezone_hint')}</div>
+          </div>
+
+          <div className="f-group" style={{ marginTop: 18 }}>
+            <label className="f-label">{t('brand.session_days')}</label>
+            <input className="f-input" type="number" min={1} max={365} value={sessionDays}
+              onChange={(e) => setSessionDays(Math.min(365, Math.max(1, Number(e.target.value) || 1)))} />
+            <div className="f-hint">{t('brand.session_days_hint')}</div>
+          </div>
+          <div className="f-group">
+            <label className="f-label">{t('brand.access_ttl')}</label>
+            <input className="f-input" type="number" min={5} max={1440} value={accessTtlMinutes}
+              onChange={(e) => setAccessTtlMinutes(Math.min(1440, Math.max(5, Number(e.target.value) || 5)))} />
+            <div className="f-hint">{t('brand.access_ttl_hint')}</div>
           </div>
           <button className="btn btn-primary" disabled={busy} style={{ width: '100%' }}>{busy ? <span className="spinner" /> : t('brand.save')}</button>
         </form>

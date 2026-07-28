@@ -94,6 +94,10 @@ export interface Branding {
   logoUrl: string | null; loginBgUrl: string | null;
   accessMode: 'SUBDOMAIN' | 'SHARED_URL'; subdomain: string | null;
   timezone: string;
+  /** How many days a sign-in lasts before re-authentication. */
+  sessionDays?: number;
+  /** Access-token lifetime; renewed silently while the app is in use. */
+  accessTtlMinutes?: number;
 }
 
 export interface AdminBooking {
