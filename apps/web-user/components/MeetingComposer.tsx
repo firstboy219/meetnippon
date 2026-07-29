@@ -198,12 +198,17 @@ export default function MeetingComposer({
 
   // Keep the picked start valid as duration/type/day change; drop it otherwise.
   useEffect(() => {
+    // Before the first free-windows fetch resolves, `startOptions` is
+    // legitimately empty — validating against it here would immediately wipe
+    // out an edit-mode prefill (or an initialStart preselect) before the real
+    // data even arrives, since neither would appear "included" in nothing yet.
+    if (loading) return;
     if (pickedStart == null) return;
     if (!startOptions.includes(pickedStart)) { setPickedStart(null); setPickedEnd(null); return; }
     const w = windows.find((x) => pickedStart >= x.s && pickedStart < x.e);
     const want = Math.min(pickedStart + durMs, w ? w.e : pickedStart + durMs);
     setPickedEnd(want);
-  }, [startOptions, durMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startOptions, durMs, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Preselect the start the caller arrived with (a click on the schedule),
   // once, after the first windows load. Not applicable when editing — the
