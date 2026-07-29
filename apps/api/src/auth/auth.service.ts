@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { MailService } from '../mail/mail.service';
 import { NotificationService } from '../notification/notification.service';
+import { MenuVisibilityService } from '../menu/menu-visibility.service';
 
 /** How long an activation link stays usable. */
 const ACTIVATION_TTL_MS = 7 * 24 * 3600_000;
@@ -31,6 +32,7 @@ export class AuthService {
     private readonly resolver: TenantResolverService,
     private readonly mail: MailService,
     private readonly notifications: NotificationService,
+    private readonly menuVisibility: MenuVisibilityService,
   ) {}
 
   /**
@@ -402,10 +404,14 @@ export class AuthService {
     );
     if (!user) throw new UnauthorizedException();
     const { tenant, ...rest } = user;
+    // What the admin's Menu Access page has hidden from this person's role —
+    // the sidebar (and a route-level redirect) act on this list.
+    const hiddenMenus = await this.menuVisibility.hiddenFor(user.tenantId, user.role);
     return {
       ...rest,
       timezone: tenant?.timezone ?? 'UTC',
       features: (tenant?.featureFlags ?? []).map((f) => f.key),
+      hiddenMenus,
     };
   }
 }

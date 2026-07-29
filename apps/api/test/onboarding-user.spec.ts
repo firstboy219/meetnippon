@@ -12,6 +12,7 @@ import { ProfileService } from '../src/profile/profile.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
 import { AuthService } from '../src/auth/auth.service';
 import { NotificationService } from '../src/notification/notification.service';
+import { MenuVisibilityService } from '../src/menu/menu-visibility.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { JwtService } from '@nestjs/jwt';
 import { PlanService } from '../src/billing/plan.service';
@@ -25,13 +26,14 @@ const R = 'ob-room';
 
 const prisma = new PrismaService();
 const audit = new AuditService(prisma);
+const specMenuVisibility = new MenuVisibilityService(prisma, audit);
 const mail = new TestMailService();
 const config = new ConfigService({ APP_BASE_URL: 'https://test.local' });
 const flags = new FeatureFlagService(prisma, audit);
 const plan = new PlanService(prisma, flags);
 const specNotifications = new NotificationService(prisma, flags);
 const obAuth = new AuthService(prisma, new JwtService({}), config, audit,
-  new TenantResolverService(prisma, config), mail, specNotifications);
+  new TenantResolverService(prisma, config), mail, specNotifications, specMenuVisibility);
 const users = new UserAdminService(prisma, audit, plan, mail, config, obAuth);
 const profile = new ProfileService(prisma, audit, mail);
 

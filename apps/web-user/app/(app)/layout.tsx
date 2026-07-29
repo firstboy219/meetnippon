@@ -55,6 +55,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const id = setInterval(read, 20_000);
     return () => clearInterval(id);
   }, [user, path]);
+  // A menu the admin has hidden from this role stays unreachable even by a
+  // bookmarked or typed URL — otherwise "hidden" would only mean "off the
+  // sidebar", which is not what an admin configuring this expects.
+  useEffect(() => {
+    if (!user?.hiddenMenus?.length) return;
+    const menuKey = path.split('/')[1] ?? '';
+    if (user.hiddenMenus.includes(menuKey)) router.replace('/dashboard');
+  }, [user, path, router]);
   useEffect(() => { setMenuOpen(false); }, [path]);
   useEffect(() => {
     if (!menuOpen) return;

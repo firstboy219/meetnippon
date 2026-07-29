@@ -150,6 +150,7 @@ model Tenant {
   subdomainRedirects SubdomainRedirect[]
   bookingChangeRequests BookingChangeRequest[]
   registrationRequests  RegistrationRequest[]
+  hiddenMenuItems       HiddenMenuItem[]
 }
 
 model TenantDomain {
@@ -509,6 +510,27 @@ model RegistrationRequest {
   /// One open row per address — repeated attempts must not stack up.
   @@unique([tenantId, email])
   @@index([tenantId, status])
+}
+
+/// One row = this sidebar item is hidden from this role, for this tenant.
+/// Absence of a row means visible — the table only ever stores the
+/// exceptions an admin has made, so a menu item introduced in a later release
+/// is visible to everyone by default with no migration needed to backfill it.
+///
+/// This is a NAVIGATION control, not an authorization boundary: it decides
+/// what appears in the sidebar (and redirects a direct visit to a hidden
+/// page), but never touches the API's own @Roles guards, which already
+/// enforce the real access rules independently of this table.
+model HiddenMenuItem {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  menuKey   String
+  role      UserRole
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, menuKey, role])
+  @@index([tenantId])
 }
 
 model ApprovalStep {

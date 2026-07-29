@@ -10,7 +10,7 @@ const TITLES: [string, string][] = [
   ['/dashboard', 'nav.dashboard'], ['/analytics', 'nav.analytics'], ['/resources', 'nav.resources'],
   ['/locations', 'nav.locations'], ['/users', 'nav.users'],
   ['/policies', 'nav.policies'], ['/branding', 'nav.branding'],
-  ['/mail', 'nav.mail'], ['/integrations', 'nav.integrations'],
+  ['/mail', 'nav.mail'], ['/integrations', 'nav.integrations'], ['/menu-access', 'nav.menuAccess'],
   ['/billing', 'nav.billing'], ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
 ];
 

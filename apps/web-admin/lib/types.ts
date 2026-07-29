@@ -17,6 +17,13 @@ export interface AuthUser {
   timezone?: string;
 }
 
+/** One cell in the Menu Access grid: is this menu visible to this role. */
+export interface MenuVisibilityRow {
+  menuKey: string;
+  role: UserRole;
+  visible: boolean;
+}
+
 export interface AdminUser {
   id: string; email: string; fullName: string; role: UserRole;
   department: string | null; languagePref: 'EN' | 'ID'; isActive: boolean;

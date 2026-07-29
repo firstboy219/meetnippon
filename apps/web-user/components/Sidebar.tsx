@@ -71,6 +71,10 @@ export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCl
   const { branding, user } = useAuth();
   const name = branding?.displayName || branding?.tenantName || 'MeetNippon';
   const features = user?.features ?? [];
+  // What the admin's Menu Access page has hidden for this person's role.
+  // Keyed off the href's own path segment (e.g. '/book' -> 'book') so it
+  // needs no separate id per item to stay in sync with the API's menu keys.
+  const hiddenMenus = new Set(user?.hiddenMenus ?? []);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => { if (localStorage.getItem('mn_sidebar') === 'collapsed') setCollapsed(true); }, []);
@@ -97,7 +101,8 @@ export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCl
       </button>
       <nav className="side">
         {GROUPS.map((g) => {
-          const items = g.items.filter((it) => !it.flag || features.includes(it.flag));
+          const items = g.items.filter((it) =>
+            (!it.flag || features.includes(it.flag)) && !hiddenMenus.has(it.href.slice(1)));
           // A group whose every item is gated off must not leave a stray heading.
           if (items.length === 0) return null;
           return (

@@ -12,6 +12,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuthService } from '../src/auth/auth.service';
 import { NotificationService } from '../src/notification/notification.service';
+import { MenuVisibilityService } from '../src/menu/menu-visibility.service';
 import { FeatureFlagService } from '../src/flags/feature-flag.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
@@ -24,6 +25,7 @@ const ADMIN = 'reg-admin';
 
 const prisma = new PrismaService();
 const audit = new AuditService(prisma);
+const specMenuVisibility = new MenuVisibilityService(prisma, audit);
 const mail = new TestMailService();
 const config = new ConfigService({
   APP_BASE_URL: 'https://test.local',
@@ -33,7 +35,7 @@ const config = new ConfigService({
 const flags = new FeatureFlagService(prisma, audit, config);
 const notifications = new NotificationService(prisma, flags);
 const resolver = new TenantResolverService(prisma, config);
-const auth = new AuthService(prisma, new JwtService({}), config, audit, resolver, mail, notifications);
+const auth = new AuthService(prisma, new JwtService({}), config, audit, resolver, mail, notifications, specMenuVisibility);
 const plan = new PlanService(prisma, flags);
 const users = new UserAdminService(prisma, audit, plan, mail, config, auth);
 

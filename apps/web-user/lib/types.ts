@@ -26,6 +26,8 @@ export interface AuthUser {
   features?: string[];
   /** True until the user replaces an admin-handed-over password. */
   mustChangePassword?: boolean;
+  /** Menu keys the admin's Menu Access page has hidden from this role. */
+  hiddenMenus?: string[];
 }
 
 /** Where the signed-in user is in onboarding. Derived from real activity. */

@@ -31,6 +31,7 @@ import { ProfileModule } from './profile/profile.module';
 import { PublicModule } from './public/public.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { MenuVisibilityModule } from './menu/menu-visibility.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
@@ -71,6 +72,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     PublicModule,
     ReminderModule,
     FeedbackModule,
+    MenuVisibilityModule,
     UploadsModule,
     HealthModule,
   ],

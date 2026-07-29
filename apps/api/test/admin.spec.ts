@@ -11,6 +11,7 @@ import { ResourceAdminService } from '../src/admin/resource-admin.service';
 import { UserAdminService } from '../src/admin/user-admin.service';
 import { AuthService } from '../src/auth/auth.service';
 import { NotificationService } from '../src/notification/notification.service';
+import { MenuVisibilityService } from '../src/menu/menu-visibility.service';
 import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
 import { JwtService } from '@nestjs/jwt';
 import { BrandingService } from '../src/admin/branding.service';
@@ -26,6 +27,7 @@ const ADMIN = 'adm-admin';
 
 const prisma = new PrismaService();
 const audit = new AuditService(prisma);
+const specMenuVisibility = new MenuVisibilityService(prisma, audit);
 const flags = new FeatureFlagService(prisma, audit);
 const plan = new PlanService(prisma, flags);
 const loc = new LocationService(prisma, audit);
@@ -34,7 +36,7 @@ const mail = new TestMailService();
 const adminCfg = new ConfigService({ JWT_ACCESS_SECRET: 'a'.repeat(64), JWT_REFRESH_SECRET: 'b'.repeat(64) });
 const specNotifications = new NotificationService(prisma, flags);
 const adminAuth = new AuthService(prisma, new JwtService({}), adminCfg, audit,
-  new TenantResolverService(prisma, adminCfg), mail, specNotifications);
+  new TenantResolverService(prisma, adminCfg), mail, specNotifications, specMenuVisibility);
 const users = new UserAdminService(prisma, audit, plan, mail, adminCfg, adminAuth);
 const branding = new BrandingService(prisma, audit);
 

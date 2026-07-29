@@ -1444,6 +1444,33 @@ Gate: 231/231 (no behavioural change to existing endpoints — every other route
 already sent bodies well under the old 100kb ceiling, which is exactly why this
 went unnoticed until a bulk import hit it).
 
+﻿
+### T17 — admin-configurable per-role menu visibility (2026-07-29)
+
+Requested: let an admin control which sidebar/navigation items each role
+(EMPLOYEE / APPROVER / ADMIN) can see in the user portal.
+
+New `HiddenMenuItem` model (tenant-scoped, migration
+`20260729032726_hidden_menu_items`) storing only the *exceptions* — absence of
+a row means visible, so a menu key added later needs no backfill. Backend:
+`MenuVisibilityService` (`matrix()` for the admin grid, `save(rows)` as a full
+delete-then-recreate replace, `hiddenFor(tenantId, role)` used by
+`AuthService.me()`), exposed at `GET/PUT /admin/menu-visibility`
+(`@Roles('ADMIN')`). `/auth/me` now returns `hiddenMenus: string[]` for the
+caller's own role.
+
+This is a navigation control, not an authorization boundary: hiding a menu
+item changes what's reachable in the portal UI only, the API's own `@Roles`
+guards are untouched and remain the real access-control layer. Frontend:
+web-user's `Sidebar` filters out hidden items and a route-guard redirects
+straight navigation to a hidden path back to `/dashboard`; web-admin gets a
+new `/menu-access` page — a 10-menu x 3-role checkbox grid.
+
+Five older specs needed `AuthService`'s new 8th constructor argument
+(`MenuVisibilityService`) patched in.
+
+Gate: 236/236.
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
