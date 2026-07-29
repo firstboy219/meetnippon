@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { AvailabilityCheck, Booking, FreeWindows, Participant } from '@/lib/types';
 import { fmtTime, getTenantTz, todayLocal, tzLabel } from '@/lib/format';
 import Participants from './Participants';
+import RequestChangeModal from './RequestChangeModal';
 import { toWire } from '@/lib/participants';
 
 const DURATION_CHIPS = [30, 45, 60, 90, 120];
@@ -73,6 +74,9 @@ export default function MeetingComposer({
   const [step, setStep] = useState<'form' | 'confirm'>('form');
   const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [requesting, setRequesting] = useState<{
+    id: string; title: string; startTime: string; endTime: string; ownerName?: string | null;
+  } | null>(null);
   const [appliedInitial, setAppliedInitial] = useState(false);
 
   useEffect(() => {
@@ -115,6 +119,14 @@ export default function MeetingComposer({
     if (!fw) return [] as { s: number; e: number }[];
     const src = type === 'ONLINE' ? (fw.dayWindow ? [fw.dayWindow] : []) : fw.windows;
     return src.map((w) => ({ s: new Date(w.start).getTime(), e: new Date(w.end).getTime() }));
+  }, [fw, type]);
+
+  // Who already has this room today — irrelevant for ONLINE, which occupies
+  // no room. Shown so a taken slot is not just a gap in the picker with no
+  // explanation, and so asking for it can go straight to the person holding it.
+  const busyToday = useMemo(() => {
+    if (!fw || type === 'ONLINE') return [];
+    return [...fw.busy].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   }, [fw, type]);
 
   const startOptions = useMemo(() => {
@@ -374,6 +386,33 @@ export default function MeetingComposer({
 
         {fw?.requiresApproval ? <div className="f-hint">{t('book.slots_approval')}</div> : null}
 
+        {/* Who already has this room today — the taken stretches the pickers
+            above quietly skip, explained, with a way to ask instead of a
+            dead end. */}
+        {busyToday.length > 0 ? (
+          <div className="f-group">
+            <label className="f-label">{t('compose.busy_label')}</label>
+            <ul className="busy-list">
+              {busyToday.map((b) => {
+                const mine = user && (b.principalId === user.id || b.bookerId === user.id);
+                return (
+                  <li key={b.id} className="busy-row">
+                    <span className="busy-time">{hm(new Date(b.startTime).getTime(), tz)}–{hm(new Date(b.endTime).getTime(), tz)}</span>
+                    <span className="busy-who">{b.title}{b.ownerName ? ` · ${b.ownerName}` : ''}{mine ? ` · ${t('compose.busy_mine')}` : ''}</span>
+                    {!mine ? (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRequesting({
+                        id: b.id, title: b.title, startTime: b.startTime, endTime: b.endTime, ownerName: b.ownerName,
+                      })}>
+                        {t('compose.busy_request')}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+
         <Participants value={participants} onChange={setParticipants} selfEmail={user?.email}
           allowExternal={allowExternal} />
 
@@ -451,6 +490,10 @@ export default function MeetingComposer({
           </button>
         </div>
       </form>
+      {requesting ? (
+        <RequestChangeModal booking={requesting} onClose={() => setRequesting(null)}
+          onSent={() => setRequesting(null)} />
+      ) : null}
     </div>
   );
 }

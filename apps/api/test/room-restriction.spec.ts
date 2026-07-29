@@ -187,6 +187,12 @@ describe('free windows (drives both start and end times)', () => {
     expect(asMs(fw.windows[1].end)).toBe(at(18).getTime());
     // dayWindow spans the whole business day (for online meetings).
     expect(asMs(fw.dayWindow!.start)).toBe(at(8).getTime());
+    // The booking itself is surfaced too, with who has it — so the picker's
+    // gap is explained rather than just silently skipped.
+    expect(fw.busy).toHaveLength(1);
+    expect(fw.busy[0]).toMatchObject({ title: 'Midday', ownerName: 'Vip' });
+    expect(asMs(fw.busy[0].startTime)).toBe(at(12).getTime());
+    expect(asMs(fw.busy[0].endTime)).toBe(at(13).getTime());
     expect(asMs(fw.dayWindow!.end)).toBe(at(18).getTime());
     expect(fw.minDurationMinutes).toBeGreaterThan(0);
   });

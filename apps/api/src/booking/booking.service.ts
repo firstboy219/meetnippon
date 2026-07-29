@@ -908,7 +908,11 @@ export class BookingService {
         startTime: { lt: new Date(dayEnd.getTime() + bufMs) },
         endTime: { gt: new Date(dayStart.getTime() - bufMs) },
       },
-      select: { startTime: true, endTime: true },
+      select: {
+        id: true, title: true, startTime: true, endTime: true,
+        principalId: true, bookerId: true,
+        principal: { select: { fullName: true } },
+      },
       orderBy: { startTime: 'asc' },
     });
     // Buffer-pad then merge overlapping busy stretches into disjoint intervals.
@@ -962,6 +966,21 @@ export class BookingService {
         ? { start: new Date(segStart).toISOString(), end: new Date(segEnd).toISOString() }
         : null,
       windows,
+      // The day's existing bookings on this room (unpadded — buffer is only
+      // for the free/busy math above), so the booking form can show who has
+      // it and offer to ask them to move, instead of just going quiet about
+      // why a stretch is unavailable.
+      busy: busyRows
+        .filter((b) => b.endTime > dayStart && b.startTime < dayEnd)
+        .map((b) => ({
+          id: b.id,
+          title: b.title,
+          startTime: b.startTime.toISOString(),
+          endTime: b.endTime.toISOString(),
+          principalId: b.principalId,
+          bookerId: b.bookerId,
+          ownerName: b.principal?.fullName ?? null,
+        })),
     };
   }
 

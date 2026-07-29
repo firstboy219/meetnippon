@@ -156,6 +156,12 @@ export interface FreeWindows {
   /** Whole business-hours block (room bookings ignored) — for ONLINE meetings. */
   dayWindow: { start: string; end: string } | null;
   windows: { start: string; end: string }[];
+  /** The room's existing bookings for the day, so the form can show who has
+   *  it and offer to ask them to move — not just that a stretch is taken. */
+  busy: {
+    id: string; title: string; startTime: string; endTime: string;
+    principalId: string; bookerId: string; ownerName: string | null;
+  }[];
 }
 
 /** A colleague's proposal to move a meeting; the author decides. */

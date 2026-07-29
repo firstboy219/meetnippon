@@ -748,6 +748,14 @@ tr:last-child td { border-bottom: none; }
 .invite-list em { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase;
   color: #8A5A0A; background: var(--amber-tint); padding: 2px 7px; border-radius: 100px; }
 
+.busy-list { list-style: none; border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; max-height: 176px; overflow-y: auto; }
+.busy-list li { display: flex; align-items: center; gap: 10px; padding: 9px 13px;
+  font-size: 13px; border-bottom: 1px solid var(--line); }
+.busy-list li:last-child { border-bottom: none; }
+.busy-time { font-weight: 600; white-space: nowrap; }
+.busy-who { flex: 1; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .check-row { display: flex; align-items: center; gap: 9px; font-size: 13px; margin: 2px 0 14px; cursor: pointer; }
 .check-row input { width: 15px; height: 15px; accent-color: var(--teal); }
 .row-actions { display: flex; gap: 8px; }
