@@ -7,6 +7,7 @@ import { useToast } from '@/lib/toast';
 import type { Booking } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
 import EditBookingModal from '@/components/EditBookingModal';
+import MeetingComposer from '@/components/MeetingComposer';
 import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
 
 const SWATCH: Record<string, string> = {
@@ -40,6 +41,8 @@ export default function BookingsPage() {
    * is to prove someone actually turned up, so it is not offered a day early.
    */
   function canCheckIn(b: Booking): boolean {
+    // Nothing to check into when the room's policy didn't require it.
+    if (!b.checkInEnabled) return false;
     if (b.checkedInAt || b.status !== 'APPROVED') return false;
     const now = Date.now();
     const start = new Date(b.startTime).getTime();
@@ -146,7 +149,13 @@ export default function BookingsPage() {
       {confirmId ? (
         <ConfirmCancel busy={busy} onClose={() => setConfirmId(null)} onConfirm={() => cancel(confirmId)} />
       ) : null}
-      {editing ? (
+      {editing && editing.resourceId ? (
+        <MeetingComposer resourceId={editing.resourceId} resourceName={editing.resource?.name}
+          booking={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
+      ) : editing ? (
+        // A pure ONLINE booking has no resourceId, so there is no room policy
+        // to drive the rich picker from — falls back to the simple form.
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
       ) : null}

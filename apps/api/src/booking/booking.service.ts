@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { NotificationService } from '../notification/notification.service';
 import { MailService } from '../mail/mail.service';
+import { buildIcs, googleCalendarUrl } from '../mail/ics.util';
 import { ConfigService } from '@nestjs/config';
 import { formatRange } from '../common/tz.util';
 import { getTenantStore } from '../tenant/tenant-context';
@@ -40,6 +41,19 @@ import {
 import { tenantTimezone } from '../common/tenant-tz';
 
 const ACTIVE_STATES = ['PENDING', 'APPROVED', 'WAITLIST'] as const;
+
+/**
+ * Strip the raw check-in token before a booking leaves the service, replacing
+ * it with a plain boolean. The token is a scan-at-the-room credential — it
+ * must never reach a browser (even the owner's own), or anyone who can read
+ * the response (devtools, a shared screen) could check someone else in
+ * without being there. `checkInEnabled` is all the UI needs to know whether
+ * the room's policy required check-in for this particular booking.
+ */
+function dropCheckInToken(booking: any): any {
+  const { checkInToken, ...rest } = booking;
+  return { ...rest, checkInEnabled: checkInToken != null };
+}
 
 @Injectable()
 export class BookingService {
@@ -124,7 +138,7 @@ export class BookingService {
             select: { name: true, floor: { select: { name: true, building: { select: { name: true } } } } },
           })
           : Promise.resolve(null),
-        this.prisma.scoped.user.findUnique({ where: { id: callerId }, select: { fullName: true } }),
+        this.prisma.scoped.user.findUnique({ where: { id: callerId }, select: { fullName: true, email: true } }),
       ]);
       const tz = tenant?.timezone || 'UTC';
       const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
@@ -146,9 +160,37 @@ export class BookingService {
           : []),
       ];
 
+      // A calendar file for Outlook/Teams/Apple Calendar (opening it imports
+      // or updates the event), plus a one-click Google Calendar link — Gmail
+      // does not reliably offer an inline "add" prompt from a bare
+      // attachment the way desktop clients do. Kept on the same UID across a
+      // reschedule (`kind === 'moved'` bumps SEQUENCE) so it updates the
+      // existing calendar entry instead of creating a duplicate.
+      const ics = buildIcs({
+        uid: `${booking.id}@${new URL(this.appBaseUrl()).hostname}`,
+        title: booking.title,
+        description: booking.description?.trim() || undefined,
+        location: where,
+        url: link || undefined,
+        start: booking.startTime,
+        end: booking.endTime,
+        organizerEmail: organiserUser?.email,
+        organizerName: organiserUser?.fullName,
+        attendeeEmails: recipients,
+        sequence: kind === 'moved' ? 1 : 0,
+      });
+      const gcalUrl = googleCalendarUrl({
+        title: booking.title,
+        start: booking.startTime,
+        end: booking.endTime,
+        location: where,
+        description: booking.description?.trim() || undefined,
+      });
+
       const buttons = [
         ...(link ? [{ label: 'Join meeting', url: link, primary: true }] : []),
-        { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar`, primary: !link },
+        { label: 'Add to Google Calendar', url: gcalUrl, primary: !link },
+        { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` },
       ];
 
       this.mail.send({
@@ -169,7 +211,10 @@ export class BookingService {
           color: tenant?.branding?.primaryColor,
           logoUrl: this.absoluteUrl(tenant?.branding?.logoUrl),
         },
-        footerNote: 'Please let the organiser know if you can’t make it.',
+        footerNote: 'Please let the organiser know if you can’t make it. The attached calendar file adds this meeting to Outlook, Teams, or Apple Calendar — open it, or use the button above for Google Calendar.',
+        attachments: [
+          { filename: 'meeting.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=REQUEST' },
+        ],
         // Plain-text fallback mirrors the details for text-only clients.
         text: [
           kind === 'invited'
@@ -403,8 +448,8 @@ export class BookingService {
       );
 
     return dto.recurrence
-      ? { groupId, count: created.length, bookings: created, invites }
-      : { ...created[0], invites };
+      ? { groupId, count: created.length, bookings: created.map(dropCheckInToken), invites }
+      : { ...dropCheckInToken(created[0]), invites };
   }
 
   /**
@@ -500,7 +545,7 @@ export class BookingService {
       ...(q.take !== undefined ? { take: q.take } : {}),
       ...(q.skip ? { skip: q.skip } : {}),
       include: { approvalSteps: true, resource: { select: { name: true, type: true } } },
-    });
+    }).then((rows) => rows.map(dropCheckInToken));
   }
 
   async getOne(id: string) {
@@ -509,7 +554,7 @@ export class BookingService {
       include: { approvalSteps: true, resource: true },
     });
     if (!booking) throw new NotFoundException('Booking not found.');
-    return booking;
+    return dropCheckInToken(booking);
   }
 
   /**
@@ -701,6 +746,7 @@ export class BookingService {
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
         ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.type !== undefined ? { type: dto.type } : {}),
         ...(dto.meetingLink !== undefined ? { meetingLink: dto.meetingLink } : {}),
         ...(dto.participants !== undefined ? { participants: dto.participants as any } : {}),
         ...(dto.resourceId !== undefined ? { resourceId: dto.resourceId } : {}),
@@ -734,7 +780,7 @@ export class BookingService {
       ? await this.notifyParticipants(updated, audience, 'moved')
       : { notified: 0, emailQueued: 0 };
 
-    return { ...updated, invites };
+    return { ...dropCheckInToken(updated), invites };
   }
 
   async cancel(id: string, reason?: string) {
@@ -761,13 +807,21 @@ export class BookingService {
       entityId: id,
       metadata: { reason: reason ?? null },
     });
-    return updated;
+    return dropCheckInToken(updated);
   }
 
   async checkIn(id: string, token?: string) {
     const caller = this.caller();
     const booking = await this.prisma.scoped.booking.findUnique({ where: { id } });
     if (!booking) throw new NotFoundException('Booking not found.');
+
+    // No token was ever issued for this booking — the room's policy did not
+    // require check-in at the time it was made, so there is nothing to check
+    // into. Covers both paths below in one place, including the owner path,
+    // which otherwise has no token of its own to fail the match on.
+    if (!booking.checkInToken) {
+      throw new BadRequestException('Check-in is not enabled for this booking.');
+    }
 
     /*
      * Two ways in, and they authorise differently:
@@ -816,7 +870,7 @@ export class BookingService {
       entity: 'Booking',
       entityId: id,
     });
-    return updated;
+    return dropCheckInToken(updated);
   }
 
   async availability(q: AvailabilityQueryDto) {
@@ -856,7 +910,7 @@ export class BookingService {
    * bookings through approval, in which case the far edge stays and the day is
    * flagged as needing approval instead.
    */
-  async freeWindows(resourceId: string, day: string) {
+  async freeWindows(resourceId: string, day: string, excludeBookingId?: string) {
     const resource = await this.prisma.scoped.resource.findUnique({ where: { id: resourceId } });
     if (!resource) throw new NotFoundException('Resource not found.');
     if (resource.status !== 'ACTIVE') throw new BadRequestException('Resource is not active.');
@@ -905,6 +959,8 @@ export class BookingService {
       where: {
         resourceId,
         status: { in: ACTIVE_STATES as any },
+        // Editing: the booking's own current slot is not a conflict with itself.
+        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
         startTime: { lt: new Date(dayEnd.getTime() + bufMs) },
         endTime: { gt: new Date(dayStart.getTime() - bufMs) },
       },

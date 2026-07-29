@@ -59,6 +59,8 @@ export interface MailInput {
   brand?: MailBrand;
   /** Small closing line above the footer. */
   footerNote?: string;
+  /** File attachments — e.g. an .ics calendar invite. */
+  attachments?: { filename: string; content: string; contentType?: string }[];
 }
 
 /**
@@ -151,6 +153,7 @@ export class MailService implements OnModuleInit {
         text: this.plain(input),
         html: this.html(input),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+        ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       });
       this.logger.log(`[mail:sent] "${input.subject}" -> ${to.length} recipient(s) via ${t.label}`);
       return true;

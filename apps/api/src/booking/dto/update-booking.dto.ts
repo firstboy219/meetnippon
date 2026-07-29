@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray, IsBoolean, IsISO8601, IsOptional, IsString, ValidateNested,
+  IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, ValidateNested,
 } from 'class-validator';
 import { ParticipantDto } from './create-booking.dto';
 
@@ -12,6 +12,7 @@ import { ParticipantDto } from './create-booking.dto';
 export class UpdateBookingDto {
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsIn(['OFFLINE', 'ONLINE', 'HYBRID']) type?: 'OFFLINE' | 'ONLINE' | 'HYBRID';
   @IsOptional() @IsString() meetingLink?: string;
   @IsOptional() @IsISO8601() startTime?: string;
   @IsOptional() @IsISO8601() endTime?: string;

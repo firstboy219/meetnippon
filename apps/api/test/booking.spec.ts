@@ -362,18 +362,19 @@ describe('booking core', () => {
   });
 
   it('lets the owner check in without a token, and refuses a wrong one', async () => {
-    // A booking running right now, so check-in is open.
+    // A booking running right now, so check-in is open, on a room whose
+    // policy required check-in (hence the token) at creation time.
     const now = Date.now();
     const b: any = await prisma.booking.create({
       data: {
         tenantId: A, title: 'Check me in', type: 'OFFLINE', resourceId: 'roomA1',
         principalId: EMP, bookerId: EMP,
         startTime: new Date(now - 5 * 60_000), endTime: new Date(now + 30 * 60_000),
-        status: 'APPROVED',
+        status: 'APPROVED', checkInToken: 'room-a1-token',
       },
     });
 
-    // A supplied token must match even for the owner — this booking has none.
+    // A supplied token must match even for the owner.
     await expect(asEmp(() => booking.checkIn(b.id, 'made-up-token')))
       .rejects.toBeInstanceOf(BadRequestException);
 
@@ -390,10 +391,26 @@ describe('booking core', () => {
         tenantId: A, title: 'Not yours', type: 'OFFLINE', resourceId: 'roomA3',
         principalId: APPR, bookerId: APPR,
         startTime: new Date(now - 5 * 60_000), endTime: new Date(now + 30 * 60_000),
-        status: 'APPROVED',
+        status: 'APPROVED', checkInToken: 'room-a3-token',
       },
     });
     await expect(asEmp(() => booking.checkIn(other.id))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('refuses check-in outright when the room never required it', async () => {
+    // No checkInToken — this room's policy had checkInRequired off when the
+    // booking was made, so there is nothing to check into, even for the
+    // owner from the portal button.
+    const now = Date.now();
+    const b: any = await prisma.booking.create({
+      data: {
+        tenantId: A, title: 'No check-in here', type: 'OFFLINE', resourceId: 'roomA1',
+        principalId: EMP, bookerId: EMP,
+        startTime: new Date(now - 5 * 60_000), endTime: new Date(now + 30 * 60_000),
+        status: 'APPROVED',
+      },
+    });
+    await expect(asEmp(() => booking.checkIn(b.id))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('reports which invitees already have something in the slot', async () => {

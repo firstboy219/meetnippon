@@ -219,7 +219,13 @@ export default function SchedulePage() {
           onBooked={() => { setQuick(null); load(); }}
         />
       ) : null}
-      {editing ? (
+      {editing && editing.resourceId ? (
+        <MeetingComposer resourceId={editing.resourceId} resourceName={editing.resource?.name}
+          booking={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
+      ) : editing ? (
+        // A pure ONLINE booking has no resourceId, so there is no room policy
+        // to drive the rich picker from — falls back to the simple form.
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
       ) : null}

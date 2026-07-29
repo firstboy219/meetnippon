@@ -93,3 +93,24 @@ describe('recent participants', () => {
     expect(recent.map((r) => r.email)).not.toContain('owner@rp.co');
   });
 });
+
+describe('invitation email carries a calendar attachment', () => {
+  it('attaches an .ics file and a Google Calendar quick-add button', async () => {
+    mail.reset();
+    await asOwner(() => bookings.create({
+      title: 'Sync with Peer', resourceId: R,
+      startTime: at(8).toISOString(), endTime: at(9).toISOString(),
+      participants: [{ userId: PEER, email: 'peer@rp.co' }],
+    } as any));
+
+    expect(mail.sent).toHaveLength(1);
+    const msg = mail.sent[0];
+    expect(msg.attachments).toHaveLength(1);
+    expect(msg.attachments![0].filename).toBe('meeting.ics');
+    expect(msg.attachments![0].contentType).toContain('text/calendar');
+    expect(msg.attachments![0].content).toContain('BEGIN:VEVENT');
+    expect(msg.attachments![0].content).toContain('SUMMARY:Sync with Peer');
+    expect(msg.attachments![0].content).toContain('ATTENDEE');
+    expect(msg.buttons?.some((b) => b.label === 'Add to Google Calendar')).toBe(true);
+  });
+});

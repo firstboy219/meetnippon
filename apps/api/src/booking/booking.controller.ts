@@ -63,7 +63,7 @@ export class BookingController {
    */
   @Get('free-windows')
   freeWindows(@Query() q: FreeWindowsQueryDto) {
-    return this.bookings.freeWindows(q.resourceId, q.day);
+    return this.bookings.freeWindows(q.resourceId, q.day, q.excludeBookingId);
   }
 
   @Get(':id')

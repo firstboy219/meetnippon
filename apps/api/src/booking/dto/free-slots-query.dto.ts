@@ -24,4 +24,9 @@ export class FreeWindowsQueryDto {
   /** Calendar date on the tenant's clock. */
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'day must be YYYY-MM-DD' })
   day!: string;
+
+  /** Editing this booking: its own current slot must not count as busy. */
+  @IsOptional()
+  @IsString()
+  excludeBookingId?: string;
 }

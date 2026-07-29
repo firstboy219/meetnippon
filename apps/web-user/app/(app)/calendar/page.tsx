@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
+import MeetingComposer from '@/components/MeetingComposer';
 import type { Booking, Resource } from '@/lib/types';
 import {
   fmtTime, fmtDayLong, fmtMonthYear, localDateKey,
@@ -205,7 +206,13 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {editing ? (
+      {editing && editing.resourceId ? (
+        <MeetingComposer resourceId={editing.resourceId} resourceName={editing.resource?.name}
+          booking={editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }} />
+      ) : editing ? (
+        // A pure ONLINE booking has no resourceId, so there is no room policy
+        // to drive the rich picker from — falls back to the simple form.
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
       ) : null}

@@ -248,6 +248,9 @@ export interface Booking {
   principalId?: string;
   meetingLink?: string | null;
   checkedInAt?: string | null;
+  /** Whether the room's policy required check-in when this booking was made
+   *  — the raw token never reaches the client, only this. */
+  checkInEnabled?: boolean;
   invites?: InviteResult;
 }
 

@@ -1,11 +1,11 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
-import type { AvailabilityCheck, Booking, FreeWindows, Participant } from '@/lib/types';
-import { fmtTime, getTenantTz, todayLocal, tzLabel } from '@/lib/format';
+import type { AvailabilityCheck, Booking, FreeWindows, InviteResult, Participant } from '@/lib/types';
+import { fmtTime, getTenantTz, localDateKey, todayLocal, tzLabel } from '@/lib/format';
 import Participants from './Participants';
 import RequestChangeModal from './RequestChangeModal';
 import { toWire } from '@/lib/participants';
@@ -31,23 +31,36 @@ export interface MeetingComposerProps {
   resourceId: string;
   resourceName?: string;
   resourceFloor?: string | null;
-  /** Initial date (tenant-local YYYY-MM-DD). Defaults to today. */
+  /** Initial date (tenant-local YYYY-MM-DD). Defaults to today. Ignored once
+   *  `booking` is set — the booking's own date is authoritative. */
   day?: string;
   /** Optional start to preselect once the day's windows load, as "HH:MM". */
   initialStart?: string;
   onClose: () => void;
-  onBooked: (result: { status: string; dayKey: string }) => void;
+  /** Create mode. */
+  onBooked?: (result: { status: string; dayKey: string }) => void;
+  /**
+   * Present when editing an existing booking instead of creating a new one —
+   * same form, prefilled, PATCHing instead of POSTing. Only bookings that
+   * hold a room reach this: a pure ONLINE booking has no resourceId, so
+   * there is no policy (hours, min/max duration) to derive the picker from,
+   * and keeps using the simpler EditBookingModal instead.
+   */
+  booking?: Booking;
+  /** Edit mode. */
+  onSaved?: (updated: Booking) => void;
 }
 
 /**
- * The one create-meeting form, used from every entry point (Book, Room
- * Schedule, Denah). Time is chosen from what is genuinely open: pick a duration
- * (preset or typed), then a start, then — the part that was missing — an end,
- * offered only as far as the room stays free. Participants can be checked for
- * clashes and a meeting link added, so the same rich form is everywhere.
+ * The one meeting form, used both to create (every entry point: Book, Room
+ * Schedule, Denah) and to edit. Time is chosen from what is genuinely open:
+ * pick a duration (preset or typed), then a start, then — the part that was
+ * missing — an end, offered only as far as the room stays free. Participants
+ * can be checked for clashes and a meeting link added, so the same rich form
+ * is everywhere, including editing.
  */
 export default function MeetingComposer({
-  resourceId, resourceName, resourceFloor, day, initialStart, onClose, onBooked,
+  resourceId, resourceName, resourceFloor, day, initialStart, onClose, onBooked, booking, onSaved,
 }: MeetingComposerProps) {
   const { t } = useI18n();
   const { push } = useToast();
@@ -55,14 +68,24 @@ export default function MeetingComposer({
   const tz = getTenantTz();
   const features = user?.features ?? [];
 
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState(day ?? todayLocal());
-  const [duration, setDuration] = useState(60);
-  const [type, setType] = useState<MeetingType>('OFFLINE');
-  const [meetingLink, setMeetingLink] = useState('');
-  const [pickedStart, setPickedStart] = useState<number | null>(null);
-  const [pickedEnd, setPickedEnd] = useState<number | null>(null);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  // The booking's own current slot, fixed for the life of this form — used to
+  // prefill, to keep itself selectable in the picker (excludeBookingId keeps
+  // it out of the busy calculation server-side), and to detect whether the
+  // user actually moved anything.
+  const editStart = booking ? new Date(booking.startTime).getTime() : null;
+  const editEnd = booking ? new Date(booking.endTime).getTime() : null;
+  // A meeting already under way can still be extended or cut short, but its
+  // start and room are locked — matches what the API itself enforces.
+  const inProgress = Boolean(booking) && editStart! <= Date.now() && editEnd! > Date.now();
+
+  const [title, setTitle] = useState(booking?.title ?? '');
+  const [date, setDate] = useState(booking ? localDateKey(booking.startTime) : (day ?? todayLocal()));
+  const [duration, setDuration] = useState(() => (booking ? Math.round((editEnd! - editStart!) / 60000) : 60));
+  const [type, setType] = useState<MeetingType>(booking?.type ?? 'OFFLINE');
+  const [meetingLink, setMeetingLink] = useState(booking?.meetingLink ?? '');
+  const [pickedStart, setPickedStart] = useState<number | null>(editStart);
+  const [pickedEnd, setPickedEnd] = useState<number | null>(editEnd);
+  const [participants, setParticipants] = useState<Participant[]>(booking?.participants ?? []);
   const [reminders, setReminders] = useState<number[]>([15]);
   const [repeat, setRepeat] = useState<'' | 'DAILY' | 'WEEKLY'>('');
   const [repeatCount, setRepeatCount] = useState(4);
@@ -89,10 +112,15 @@ export default function MeetingComposer({
   }, [onClose, step]);
 
   // One request per room+day; duration and start/end are all derived client-side
-  // from the returned free windows.
+  // from the returned free windows. When editing, the booking's own slot is
+  // excluded from the busy calculation (it is not a conflict with itself),
+  // and the very first fetch must not clear the prefilled start/end the way a
+  // later date change should.
+  const firstFetch = useRef(true);
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ resourceId, day: date });
+    if (booking) p.set('excludeBookingId', booking.id);
     api.get<FreeWindows>(`/bookings/free-windows?${p}`)
       .then((r) => {
         setFw(r);
@@ -100,8 +128,9 @@ export default function MeetingComposer({
       })
       .catch(() => setFw(null))
       .finally(() => setLoading(false));
-    setPickedStart(null);
-    setPickedEnd(null);
+    if (!firstFetch.current) { setPickedStart(null); setPickedEnd(null); }
+    firstFetch.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourceId, date]);
 
   const anchor = fw ? new Date(fw.gridAnchor).getTime() : 0;
@@ -137,8 +166,16 @@ export default function MeetingComposer({
         if (tms >= nowMs) out.push(tms);
       }
     }
-    return out;
-  }, [windows, anchor, stepMs, durMs, nowMs]);
+    // Editing: keep the booking's own current start selectable even off the
+    // :00/:30 grid, or once the meeting has already started (which the
+    // `nowMs` guard above would otherwise trim) — excludeBookingId already
+    // kept its own slot out of the busy calculation `windows` came from.
+    if (editStart != null && !out.includes(editStart)) {
+      const w = windows.find((x) => editStart >= x.s && editStart < x.e);
+      if (w && editStart + durMs <= w.e) out.push(editStart);
+    }
+    return out.sort((a, b) => a - b);
+  }, [windows, anchor, stepMs, durMs, nowMs, editStart]);
 
   // End options for the chosen start: snapped to the same :00/:30 grid as the
   // starts (so a 1-hour default lands on a round 08:00, not 07:15), from the
@@ -169,13 +206,14 @@ export default function MeetingComposer({
   }, [startOptions, durMs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Preselect the start the caller arrived with (a click on the schedule),
-  // once, after the first windows load.
+  // once, after the first windows load. Not applicable when editing — the
+  // booking's own start already took that slot above.
   useEffect(() => {
-    if (appliedInitial || !fw || !initialStart) return;
+    if (booking || appliedInitial || !fw || !initialStart) return;
     const hit = startOptions.find((ms) => hm(ms, tz) === initialStart);
     if (hit != null) { setPickedStart(hit); setPickedEnd(hit + durMs); }
     setAppliedInitial(true);
-  }, [fw, startOptions, initialStart, appliedInitial, durMs, tz]);
+  }, [booking, fw, startOptions, initialStart, appliedInitial, durMs, tz]);
 
   function chooseStart(ms: number) {
     setPickedStart(ms);
@@ -208,6 +246,7 @@ export default function MeetingComposer({
   const clashing = (avail?.people ?? []).filter((p) => p.status === 'busy');
 
   const canSubmit = pickedStart != null && pickedEnd != null && title.trim().length > 0;
+  const moved = Boolean(booking) && (pickedStart !== editStart || pickedEnd !== editEnd);
 
   function next(e: React.FormEvent) {
     e.preventDefault();
@@ -220,31 +259,49 @@ export default function MeetingComposer({
     if (pickedStart == null || pickedEnd == null) return;
     setBusy(true);
     try {
-      const res = await api.post<Booking>('/bookings', {
-        title: title.trim(),
-        type,
-        // A pure-online meeting occupies no room, so the resource is dropped.
-        ...(type === 'ONLINE' ? {} : { resourceId }),
-        ...(type !== 'OFFLINE' && meetingLink.trim() ? { meetingLink: meetingLink.trim() } : {}),
-        startTime: new Date(pickedStart).toISOString(),
-        endTime: new Date(pickedEnd).toISOString(),
-        ...(participants.length ? { participants: toWire(participants), notify } : {}),
-        ...(repeat && allowRecurring ? { recurrence: { freq: repeat, count: repeatCount } } : {}),
-        ...(reminders.length ? { reminders: reminders.map((m) => ({ offsetMinutes: m, channel: 'app' })) } : {}),
-        ...(record ? { recordingRequested: true } : {}),
-      });
-      const base = res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed');
-      const n = participants.length && notify ? participants.length : 0;
-      push(n > 0 ? `${base} ${t('book.toast_notified').replace('{n}', String(n))}` : base, 'success');
-      onBooked({ status: res.status, dayKey: date });
+      if (booking) {
+        const payload: Record<string, unknown> = {
+          title: title.trim(),
+          type,
+          meetingLink: type !== 'OFFLINE' ? meetingLink.trim() : '',
+          participants: toWire(participants),
+          notify,
+        };
+        if (moved) {
+          payload.startTime = new Date(pickedStart).toISOString();
+          payload.endTime = new Date(pickedEnd).toISOString();
+        }
+        const res = await api.patch<Booking & { invites?: InviteResult }>(`/bookings/${booking.id}`, payload);
+        const n = res.invites?.notified ?? 0;
+        push(moved && n > 0 ? t('edit.saved_notified').replace('{n}', String(n)) : t('edit.saved'), 'success');
+        onSaved?.(res);
+      } else {
+        const res = await api.post<Booking>('/bookings', {
+          title: title.trim(),
+          type,
+          // A pure-online meeting occupies no room, so the resource is dropped.
+          ...(type === 'ONLINE' ? {} : { resourceId }),
+          ...(type !== 'OFFLINE' && meetingLink.trim() ? { meetingLink: meetingLink.trim() } : {}),
+          startTime: new Date(pickedStart).toISOString(),
+          endTime: new Date(pickedEnd).toISOString(),
+          ...(participants.length ? { participants: toWire(participants), notify } : {}),
+          ...(repeat && allowRecurring ? { recurrence: { freq: repeat, count: repeatCount } } : {}),
+          ...(reminders.length ? { reminders: reminders.map((m) => ({ offsetMinutes: m, channel: 'app' })) } : {}),
+          ...(record ? { recordingRequested: true } : {}),
+        });
+        const base = res.status === 'PENDING' ? t('book.toast_pending') : t('book.toast_confirmed');
+        const n = participants.length && notify ? participants.length : 0;
+        push(n > 0 ? `${base} ${t('book.toast_notified').replace('{n}', String(n))}` : base, 'success');
+        onBooked?.({ status: res.status, dayKey: date });
+      }
     } catch (err: any) {
       push(err?.message || t('book.toast_fail'), 'error');
       setStep('form');
     } finally {
       setBusy(false);
     }
-  }, [pickedStart, pickedEnd, title, type, resourceId, meetingLink, participants, notify,
-    repeat, allowRecurring, repeatCount, reminders, record, date, onBooked, push, t]);
+  }, [booking, moved, pickedStart, pickedEnd, title, type, resourceId, meetingLink, participants, notify,
+    repeat, allowRecurring, repeatCount, reminders, record, date, onBooked, onSaved, push, t]);
 
   const internal = participants.filter((p) => !p.external);
 
@@ -287,7 +344,7 @@ export default function MeetingComposer({
     <div className="overlay" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={next}>
         <div className="modal-head">
-          <h3>{t('modal.new_booking')}</h3>
+          <h3>{booking ? t('edit.title') : t('modal.new_booking')}</h3>
           <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
         <div className="modal-sub">
@@ -296,6 +353,7 @@ export default function MeetingComposer({
           {pickedStart != null && pickedEnd != null
             ? ` · ${hm(pickedStart, tz)}–${hm(pickedEnd, tz)} (${tzLabel(tz)})`
             : ''}
+          {booking?.status === 'PENDING' ? ` · ${t('edit.pending_note')}` : ''}
         </div>
 
         <div className="f-group">
@@ -307,7 +365,7 @@ export default function MeetingComposer({
         <div className="f-row2">
           <div className="f-group">
             <label className="f-label">{t('modal.date')}</label>
-            <input className="f-input" type="date" value={date} min={todayLocal()}
+            <input className="f-input" type="date" value={date} min={todayLocal()} disabled={inProgress}
               onChange={(e) => setDate(e.target.value)} required />
           </div>
           <div className="f-group">
@@ -333,7 +391,8 @@ export default function MeetingComposer({
           <div className="row-actions">
             {(['OFFLINE', 'ONLINE', 'HYBRID'] as const).map((k) => (
               <button key={k} type="button" className={`filter-pill ${type === k ? 'active' : ''}`}
-                aria-pressed={type === k} onClick={() => setType(k)}>
+                aria-pressed={type === k} disabled={Boolean(booking)}
+                onClick={() => setType(k)}>
                 {t(`modal.type_${k.toLowerCase()}`)}
               </button>
             ))}
@@ -349,10 +408,12 @@ export default function MeetingComposer({
           </div>
         ) : null}
 
-        {/* Available START times */}
+        {/* Available START times — locked once the meeting is under way. */}
         <div className="f-group">
           <label className="f-label">{t('compose.start_label')}</label>
-          {loading ? (
+          {inProgress ? (
+            <div className="f-hint">{t('edit.in_progress')} · {hm(editStart!, tz)}</div>
+          ) : loading ? (
             <div className="f-hint">{t('common.loading')}</div>
           ) : startOptions.length === 0 ? (
             <div className="warn-box">{t('compose.no_starts')}</div>
@@ -385,6 +446,9 @@ export default function MeetingComposer({
         ) : null}
 
         {fw?.requiresApproval ? <div className="f-hint">{t('book.slots_approval')}</div> : null}
+        {booking && moved && booking.status === 'APPROVED' ? (
+          <div className="warn-box">{t('edit.reapproval_warning')}</div>
+        ) : null}
 
         {/* Who already has this room today — the taken stretches the pickers
             above quietly skip, explained, with a way to ask instead of a
@@ -432,61 +496,70 @@ export default function MeetingComposer({
           <div className="info-box">{t('assist.all_free')}</div>
         ) : null}
 
-        <details className="more-opts">
-          <summary>{t('modal.more_options')}</summary>
+        {booking && moved && participants.length > 0 ? (
+          <div className="info-box">{t('edit.will_notify').replace('{n}', String(participants.length))}</div>
+        ) : null}
 
-          {allowRecurring ? (
-            <div className="f-group" style={{ marginTop: 12 }}>
-              <label className="f-label">{t('modal.repeat')}</label>
+        {/* Repeat/reminders/recording only apply to creating a new meeting —
+            editing a single occurrence of a series, or its reminders, is a
+            different (and not yet built) operation. */}
+        {!booking ? (
+          <details className="more-opts">
+            <summary>{t('modal.more_options')}</summary>
+
+            {allowRecurring ? (
+              <div className="f-group" style={{ marginTop: 12 }}>
+                <label className="f-label">{t('modal.repeat')}</label>
+                <div className="row-actions">
+                  {([['', 'once'], ['DAILY', 'daily'], ['WEEKLY', 'weekly']] as const).map(([v, k]) => (
+                    <button key={k} type="button" className={`filter-pill ${repeat === v ? 'active' : ''}`}
+                      aria-pressed={repeat === v} onClick={() => setRepeat(v)}>{t(`modal.repeat_${k}`)}</button>
+                  ))}
+                </div>
+                {repeat ? (
+                  <>
+                    <div className="f-row2" style={{ marginTop: 10 }}>
+                      <div className="f-group" style={{ marginBottom: 0 }}>
+                        <label className="f-label">{t('modal.occurrences')}</label>
+                        <input className="f-input" type="number" min={2} max={52} value={repeatCount}
+                          onChange={(e) => setRepeatCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))} />
+                      </div>
+                    </div>
+                    <div className="f-hint">{t('modal.repeat_hint')}</div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="f-group">
+              <label className="f-label">{t('modal.remind_me')}</label>
               <div className="row-actions">
-                {([['', 'once'], ['DAILY', 'daily'], ['WEEKLY', 'weekly']] as const).map(([v, k]) => (
-                  <button key={k} type="button" className={`filter-pill ${repeat === v ? 'active' : ''}`}
-                    aria-pressed={repeat === v} onClick={() => setRepeat(v)}>{t(`modal.repeat_${k}`)}</button>
+                {[10, 15, 30, 60].map((m) => (
+                  <button key={m} type="button"
+                    className={`filter-pill ${reminders.includes(m) ? 'active' : ''}`}
+                    aria-pressed={reminders.includes(m)}
+                    onClick={() => setReminders((r) => r.includes(m) ? r.filter((x) => x !== m) : [...r, m].sort((a, b) => a - b))}>
+                    {m < 60 ? `${m} ${t('modal.min_before')}` : `1 ${t('modal.hour_before')}`}
+                  </button>
                 ))}
               </div>
-              {repeat ? (
-                <>
-                  <div className="f-row2" style={{ marginTop: 10 }}>
-                    <div className="f-group" style={{ marginBottom: 0 }}>
-                      <label className="f-label">{t('modal.occurrences')}</label>
-                      <input className="f-input" type="number" min={2} max={52} value={repeatCount}
-                        onChange={(e) => setRepeatCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))} />
-                    </div>
-                  </div>
-                  <div className="f-hint">{t('modal.repeat_hint')}</div>
-                </>
-              ) : null}
+              <div className="f-hint">{reminders.length ? t('modal.remind_hint') : t('modal.remind_none')}</div>
             </div>
-          ) : null}
 
-          <div className="f-group">
-            <label className="f-label">{t('modal.remind_me')}</label>
-            <div className="row-actions">
-              {[10, 15, 30, 60].map((m) => (
-                <button key={m} type="button"
-                  className={`filter-pill ${reminders.includes(m) ? 'active' : ''}`}
-                  aria-pressed={reminders.includes(m)}
-                  onClick={() => setReminders((r) => r.includes(m) ? r.filter((x) => x !== m) : [...r, m].sort((a, b) => a - b))}>
-                  {m < 60 ? `${m} ${t('modal.min_before')}` : `1 ${t('modal.hour_before')}`}
-                </button>
-              ))}
-            </div>
-            <div className="f-hint">{reminders.length ? t('modal.remind_hint') : t('modal.remind_none')}</div>
-          </div>
-
-          {features.includes('recording') ? (
-            <label className="check-row">
-              <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} />
-              <span>{t('modal.record')}</span>
-            </label>
-          ) : null}
-          {record ? <div className="warn-box">{t('modal.record_consent')}</div> : null}
-        </details>
+            {features.includes('recording') ? (
+              <label className="check-row">
+                <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} />
+                <span>{t('modal.record')}</span>
+              </label>
+            ) : null}
+            {record ? <div className="warn-box">{t('modal.record_consent')}</div> : null}
+          </details>
+        ) : null}
 
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
           <button className="btn btn-primary" disabled={busy || !canSubmit}>
-            {busy ? <span className="spinner" /> : participants.length ? t('modal.review') : t('modal.confirm')}
+            {busy ? <span className="spinner" /> : booking ? t('common.save') : participants.length ? t('modal.review') : t('modal.confirm')}
           </button>
         </div>
       </form>
