@@ -29,11 +29,50 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    api.get<DirectoryUser[]>('/users/directory').then(setDir).catch(() => setDir([]));
     // People this user has invited before — the external guests especially,
     // who are not in the directory and would otherwise be retyped each time.
     api.get<RecentParticipant[]>('/bookings/recent-participants').then(setRecent).catch(() => setRecent([]));
   }, []);
+
+  /**
+   * Server-backed search, per typed term. A tenant directory can run into the
+   * thousands (nipsea alone has 1,700+ active users), far past anything worth
+   * loading and filtering client-side against one snapshot — that approach
+   * meant anyone outside an arbitrary alphabetical top-50 could never be found
+   * no matter what was typed, and got silently treated as an outside guest.
+   */
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setDir([]); return; }
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      api.get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(term)}`)
+        .then((rows) => { if (!cancelled) setDir(rows); })
+        .catch(() => { if (!cancelled) setDir([]); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q]);
+
+  /**
+   * Names for already-chosen participants aren't stored on the booking (only
+   * userId/email are, see labelFor below) and won't be sitting in `dir` once
+   * search has moved on to a different term — resolved once per email here so
+   * editing an existing booking still shows real names, not bare addresses.
+   */
+  const [known, setKnown] = useState<Map<string, DirectoryUser>>(new Map());
+  useEffect(() => {
+    const missing = value.filter((p) => !p.name && !known.has(p.email.toLowerCase()));
+    if (!missing.length) return;
+    Promise.all(missing.map((p) =>
+      api.get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(p.email)}`).catch(() => [] as DirectoryUser[]),
+    )).then((results) => {
+      setKnown((m) => {
+        const next = new Map(m);
+        for (const row of results.flat()) next.set(row.email.toLowerCase(), row);
+        return next;
+      });
+    });
+  }, [value, known]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,9 +92,10 @@ export default function Participants({ value, onChange, selfEmail, allowExternal
    */
   const labelFor = useCallback((p: Participant) => {
     if (p.name) return p.name;
-    const hit = dir.find((u) => u.id === p.userId || u.email.toLowerCase() === p.email.toLowerCase());
+    const hit = dir.find((u) => u.id === p.userId || u.email.toLowerCase() === p.email.toLowerCase())
+      ?? known.get(p.email.toLowerCase());
     return hit?.fullName ?? p.email;
-  }, [dir]);
+  }, [dir, known]);
 
   const matches = useMemo(() => {
     const term = q.trim().toLowerCase();

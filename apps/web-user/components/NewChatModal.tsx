@@ -30,6 +30,24 @@ export default function NewChatModal({ onClose, onCreated }: {
     api.get<DirectoryUser[]>('/users/directory').then(setDir).catch(() => setDir([]));
   }, []);
 
+  /**
+   * Once something is typed, search the server instead of continuing to
+   * filter the initial (backend-capped) browse list — a large tenant has far
+   * more people than that first page, so anyone past it could never be found
+   * by name. See Participants.tsx for the same fix applied to the booking form.
+   */
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      api.get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(term)}`)
+        .then((rows) => { if (!cancelled) setDir(rows); })
+        .catch(() => { if (!cancelled) setDir([]); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
