@@ -27,6 +27,7 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [resetting, setResetting] = useState<AdminUser | null>(null);
   const [removing, setRemoving] = useState<AdminUser | null>(null);
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [approving, setApproving] = useState<RegistrationRequest | null>(null);
@@ -203,6 +204,7 @@ export default function UsersPage() {
                   <td>
                     <div className="row-actions">
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditing(u)}>{t('common.edit')}</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setResetting(u)}>{t('users.reset_password')}</button>
                       <button className={`btn btn-sm ${u.isActive ? 'btn-ghost' : 'btn-ghost'}`}
                         onClick={() => (u.isActive ? setDeactivate(u) : setActive(u, true))}>
                         {u.isActive ? t('users.deactivate') : t('users.activate')}
@@ -237,6 +239,9 @@ export default function UsersPage() {
       {editing ? (
         <EditUserModal user={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
+      ) : null}
+      {resetting ? (
+        <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} />
       ) : null}
       {removing ? (
         <ConfirmModal title={t('users.confirm_delete_title')}
@@ -317,6 +322,68 @@ function EditUserModal({ user, onClose, onSaved }: {
             <option value="EN">English</option>
             <option value="ID">Bahasa Indonesia</option>
           </select>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Sets a new password directly — no email involved, unlike self-service
+ * activation. The admin has to hand the value to the person themselves, so it
+ * stays on screen (once) after a successful reset, same pattern as the
+ * temporary password shown right after creating a user.
+ */
+function genPassword() {
+  const bytes = new Uint8Array(9);
+  crypto.getRandomValues(bytes);
+  const body = Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
+  return `${body}A1!`;
+}
+
+function ResetPasswordModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const { t } = useI18n();
+  const { push } = useToast();
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${user.id}/password`, { password });
+      push(t('users.reset_done'), 'success');
+      setDone(true);
+    } catch (e: any) { push(e?.message || t('common.update_failed'), 'error'); }
+    finally { setBusy(false); }
+  }
+
+  if (done) {
+    return (
+      <Modal title={t('users.reset_done_title')} onClose={onClose}
+        footer={<button type="button" className="btn btn-primary" onClick={onClose}>{t('common.done')}</button>}>
+        <div className="info-box">{t('users.reset_done_info').replace('{name}', user.fullName)}</div>
+        <div className="f-label">{t('users.reset_password_label')}</div>
+        <div className="mono" style={{ padding: '10px 12px', background: '#F5F4EF', borderRadius: 9 }}>{password}</div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title={t('users.reset_title')} onClose={onClose}
+      formId="reset-password-form" submitLabel={t('users.reset_submit')} busy={busy}>
+      <form id="reset-password-form" onSubmit={submit}>
+        <div className="info-box">{t('users.reset_info').replace('{name}', user.fullName)}</div>
+        <div className="f-group">
+          <label className="f-label">{t('users.reset_password_label')}</label>
+          <div className="row-actions">
+            <input className="f-input" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder={t('users.reset_password_ph')} minLength={8} required autoFocus />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPassword(genPassword())}>
+              {t('users.reset_generate')}
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

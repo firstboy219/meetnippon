@@ -145,12 +145,27 @@ export class AuthService {
         where: { tenantId_email: { tenantId, email } },
       }),
     );
-    // A rejected address should not be able to re-queue itself by retrying.
-    if (existing) return;
+    // A rejected address should not be able to re-queue itself by retrying,
+    // and an already-pending one does not need a duplicate. An approved
+    // request is different: the caller already confirmed no live user exists
+    // for this address, so an APPROVED row here means that account was since
+    // removed (offboarding, or an admin clearing out a test account) — not
+    // that the address is still resolved. Let it re-open instead of locking
+    // the address out of self-service registration forever.
+    if (existing && existing.status !== 'APPROVED') return;
 
-    await runUnscoped(() =>
-      this.prisma.registrationRequest.create({ data: { tenantId, email } as any }),
-    );
+    if (existing) {
+      await runUnscoped(() =>
+        this.prisma.registrationRequest.update({
+          where: { id: existing.id },
+          data: { status: 'PENDING', decidedAt: null, decidedById: null, note: null, createdAt: new Date() },
+        }),
+      );
+    } else {
+      await runUnscoped(() =>
+        this.prisma.registrationRequest.create({ data: { tenantId, email } as any }),
+      );
+    }
     await runWithTenant({ tenantId, userId: 'system', role: 'ADMIN' }, () =>
       this.audit.log({ action: 'registration.requested', entity: 'RegistrationRequest', metadata: { email } }),
     );

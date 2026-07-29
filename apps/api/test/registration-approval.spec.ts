@@ -131,6 +131,23 @@ describe('self-service sign-up', () => {
     await expect(asAdmin(() => users.approveRegistration(req!.id, { fullName: 'Again' } as any)))
       .rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('re-opens for a fresh request once an approved account is later removed', async () => {
+    await auth.requestActivation('comeback@reg-co.com', 'reg-co');
+    const req = await prisma.registrationRequest.findFirst({ where: { tenantId: T, email: 'comeback@reg-co.com' } });
+    const created = await asAdmin(() => users.approveRegistration(req!.id, { fullName: 'Comeback Kid' } as any));
+
+    // The approved account is later removed — an offboarding, or an admin
+    // clearing out a test account made through self-service sign-up.
+    await asAdmin(() => users.remove(created.id));
+
+    // The address must not be locked out forever just because it once had an
+    // approved (then removed) account — only a REJECTED decision should stick.
+    await auth.requestActivation('comeback@reg-co.com', 'reg-co');
+    const after = await prisma.registrationRequest.findUnique({ where: { id: req!.id } });
+    expect(after!.status).toBe('PENDING');
+    expect(await prisma.registrationRequest.count({ where: { tenantId: T, email: 'comeback@reg-co.com' } })).toBe(1);
+  });
 });
 
 describe('user deletion', () => {
