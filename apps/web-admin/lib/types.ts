@@ -30,6 +30,23 @@ export interface AdminUser {
   createdAt: string; tempPassword?: string;
 }
 
+/** A client-reported error, with whatever technical detail the browser had
+ *  at the moment — enough for a developer to act on without reproducing it. */
+export interface ErrorReport {
+  id: string;
+  app: string;
+  route: string | null;
+  message: string;
+  status: number | null;
+  endpoint: string | null;
+  method: string | null;
+  stack: string | null;
+  userAgent: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  createdAt: string;
+}
+
 /** A row in the bulk-email recipient picker. */
 export interface BroadcastRecipient {
   id: string; email: string; fullName: string; role: UserRole;

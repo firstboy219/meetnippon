@@ -33,6 +33,7 @@ import { ReminderModule } from './reminder/reminder.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { MenuVisibilityModule } from './menu/menu-visibility.module';
 import { BroadcastModule } from './broadcast/broadcast.module';
+import { ErrorReportModule } from './error-report/error-report.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { TenantContextMiddleware } from './tenant/tenant.middleware';
@@ -75,6 +76,7 @@ import { TenantContextMiddleware } from './tenant/tenant.middleware';
     FeedbackModule,
     MenuVisibilityModule,
     BroadcastModule,
+    ErrorReportModule,
     UploadsModule,
     HealthModule,
   ],

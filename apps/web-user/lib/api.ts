@@ -27,6 +27,27 @@ export class ApiError extends Error {
 }
 
 /**
+ * The most recent request failure, with the technical detail a toast's
+ * message string alone doesn't carry (endpoint, method, HTTP status, stack).
+ *
+ * Deliberately not threaded through every one of this app's `catch (e) {
+ * push(e?.message, 'error') }` call sites — that would mean touching dozens
+ * of files for one feature. Instead the toast layer reads this snapshot at
+ * the moment it shows an error, which lines up in practice: a catch block
+ * runs synchronously right after the throw, so nothing else has had a
+ * chance to overwrite it yet. `at` lets a stale read (e.g. a client-side
+ * validation message with no request behind it) be told apart from a fresh
+ * one instead of attaching an unrelated old error's detail to it.
+ */
+export interface LastApiError {
+  status: number; message: string; endpoint: string; method: string; stack?: string; at: number;
+}
+let lastError: LastApiError | null = null;
+export function getLastApiError(): LastApiError | null {
+  return lastError;
+}
+
+/**
  * Renew the access token, at most once at a time.
  *
  * Without this the portal signed people out the moment the short-lived access
@@ -69,7 +90,15 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   if (auth && tokenStore.access) {
     headers['Authorization'] = `Bearer ${tokenStore.access}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  const method = init.method || 'GET';
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
+  } catch (networkErr: any) {
+    const err = new ApiError(0, networkErr?.message || 'Network error — check your connection.');
+    lastError = { status: 0, message: err.message, endpoint: path, method, stack: err.stack, at: Date.now() };
+    throw err;
+  }
 
   // An expired access token is recoverable: renew once and replay. `retry`
   // guards against a loop when the refresh token is dead too.
@@ -81,7 +110,9 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   const body = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const msg = (body && (body.message || body.error)) || `Request failed (${res.status})`;
-    throw new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
+    const err = new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
+    lastError = { status: res.status, message: err.message, endpoint: path, method, stack: err.stack, at: Date.now() };
+    throw err;
   }
   return body as T;
 }
@@ -101,7 +132,9 @@ async function upload<T>(path: string, file: File): Promise<T> {
   const body = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const msg = (body && (body.message || body.error)) || `Upload failed (${res.status})`;
-    throw new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
+    const err = new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
+    lastError = { status: res.status, message: err.message, endpoint: path, method: 'POST', stack: err.stack, at: Date.now() };
+    throw err;
   }
   return body as T;
 }

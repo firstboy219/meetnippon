@@ -334,6 +334,25 @@ tr:last-child td { border-bottom: none; }
 .toast.error { background: #8E2B35; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
+/* A richer card for errors specifically: title/body split, a dismiss button
+   instead of "click anywhere", and a way to actually report it. */
+.toast-rich { flex-direction: column; align-items: stretch; gap: 6px; cursor: default;
+  min-width: 280px; max-width: 380px; padding: 14px 16px; }
+.toast-head { display: flex; align-items: center; gap: 8px; }
+.toast-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  border-radius: 100px; background: rgba(255,255,255,.18); font-weight: 700; font-size: 12px; flex-shrink: 0; }
+.toast-title { font-weight: 700; font-size: 13px; flex: 1; }
+.toast-close { background: none; border: none; color: rgba(255,255,255,.7); font-size: 18px;
+  line-height: 1; cursor: pointer; padding: 0 2px; }
+.toast-close:hover { color: #fff; }
+.toast-body { font-size: 13px; font-weight: 400; line-height: 1.5; color: rgba(255,255,255,.92); }
+.toast-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
+.toast-report-btn { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); color: #fff;
+  font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
+.toast-report-btn:hover { background: rgba(255,255,255,.24); }
+.toast-report-btn:disabled { opacity: .6; cursor: default; }
+.toast-reported { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.85); }
+
 /* ---------- Login ---------- */
 .login-wrap { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; }
 .login-hero { background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%); color: #fff;

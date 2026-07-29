@@ -13,6 +13,7 @@ const TITLES: [string, string][] = [
   ['/mail', 'nav.mail'], ['/integrations', 'nav.integrations'], ['/menu-access', 'nav.menuAccess'],
   ['/billing', 'nav.billing'], ['/bookings', 'nav.bookings'], ['/audit', 'nav.audit'],
   ['/broadcast', 'nav.broadcast'],
+  ['/error-reports', 'nav.errorReports'],
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
