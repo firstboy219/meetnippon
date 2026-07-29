@@ -87,7 +87,9 @@ export default function Sidebar({ pendingCount, chatUnread = 0, mobileOpen, onCl
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="brand">
-        <div className="brand-mark">{branding?.logoUrl ? <img src={branding.logoUrl} alt="" /> : null}</div>
+        <div className={`brand-mark ${branding?.logoUrl ? 'has-logo' : ''}`}>
+          {branding?.logoUrl ? <img src={branding.logoUrl} alt="" /> : null}
+        </div>
         <div className="brand-text">
           <div className="brand-name">{name}</div>
           <div className="brand-sub">{t('nav.tagline')}</div>

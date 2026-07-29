@@ -117,7 +117,9 @@ function LoginForm() {
   return (
     <div className="login-wrap">
       <div className="login-hero">
-        <div className="brand-mark">{branding?.logoUrl ? <img src={branding.logoUrl} alt="" /> : null}</div>
+        <div className={`brand-mark ${branding?.logoUrl ? 'has-logo' : ''}`}>
+          {branding?.logoUrl ? <img src={branding.logoUrl} alt="" /> : null}
+        </div>
         <h1>{tenantName}</h1>
         <p>{t('login.tagline')}</p>
       </div>

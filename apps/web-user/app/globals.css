@@ -54,7 +54,13 @@ a { color: inherit; text-decoration: none; }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; padding: 0 8px; }
 .brand-mark { width: 34px; height: 34px; border-radius: 9px;
   background: linear-gradient(135deg, var(--coral), var(--amber)); flex-shrink: 0; overflow: hidden; }
-.brand-mark img { width: 100%; height: 100%; object-fit: cover; }
+/* `contain` (not `cover`): an admin-supplied logo is rarely square like the
+   placeholder mark, and cropping a wide wordmark down to a sliver reads as
+   broken rather than "different shape". A real logo also gets a plain white
+   backdrop instead of the gradient placeholder, which is tuned for a small
+   monogram and clashes with most uploaded logos' own colours. */
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+.brand-mark.has-logo { background: #fff; }
 .brand-text { flex: 1; min-width: 0; }
 .brand-name { font-family: var(--font-display); font-weight: 600; font-size: 15px; line-height: 1.2; white-space: nowrap; }
 .brand-sub { font-size: 11px; color: rgba(255,255,255,.6); white-space: nowrap; }
