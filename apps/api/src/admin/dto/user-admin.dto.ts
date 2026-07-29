@@ -56,7 +56,9 @@ export class ImportUserRowDto {
 
 export class ImportUsersDto {
   @IsArray()
-  @ArrayMaxSize(1000)
+  // Headroom well above any realistic single-file roster; the real ceiling in
+  // practice is the request body limit set alongside this in main.ts.
+  @ArrayMaxSize(5000)
   @ValidateNested({ each: true })
   @Type(() => ImportUserRowDto)
   rows!: ImportUserRowDto[];

@@ -1422,6 +1422,28 @@ duplicate/rejected re-queue, approve creates + mails, delete blocked by history,
 no self-deletion). Migration `20260728072821_registration_requests`.
 Four older specs needed AuthService's new NotificationService argument.
 
+### T16 — request body limit was blocking any real CSV import (2026-07-29)
+
+Reported: importing a 1,769-row roster failed with "request entity too large".
+`main.ts` never configured Nest's body parser, so it ran with Express's
+undocumented-by-us default of **100kb** — far below what a real company roster
+serialises to as JSON (a few hundred KB). nginx's own limit (20mb, both prod
+vhosts) was never the problem; the request was rejected inside the API before
+reaching the route or its DTO validation, so **zero rows were created** — no
+partial import to clean up, confirmed by checking `createdAt` on every nipsea
+user before deploying the fix.
+
+Fixed the actual layer: `NestFactory.create(AppModule, { bodyParser: false })`
+then re-registered `json()`/`urlencoded()` with a 15mb limit (Nest's documented
+pattern for this — the default parser has to be disabled first, or it rejects
+oversized requests before a replacement one ever runs). Also raised
+`ImportUsersDto`'s `@ArrayMaxSize` from 1000 to 5000, which would otherwise have
+rejected the same 1,769 rows with a validation error instead.
+
+Gate: 231/231 (no behavioural change to existing endpoints — every other route
+already sent bodies well under the old 100kb ceiling, which is exactly why this
+went unnoticed until a bulk import hit it).
+
 ## Escalations / pending decisions
 
 - **ESC-1 (wildcard DNS):** `*.meetnippon.cosger.online` does not resolve. Needed for tenant-subdomain mode only. Shipping shared-URL mode meanwhile. → request 1 wildcard A/CNAME record from owner before Phase 7 subdomain enablement.
