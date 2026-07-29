@@ -27,23 +27,44 @@ export class BroadcastService {
     return getTenantStore()?.tenantId as string;
   }
 
+  /**
+   * "Activated" means genuinely theirs: a password they chose, not one
+   * someone else handed them. That is two different DB states, not one —
+   * `passwordHash: null` (self-service or CSV-imported, never set one at
+   * all) and `mustChangePassword: true` (an admin created the account or
+   * reset it, so a password exists but is still the generic one the admin
+   * set, and the person may never have signed in with it at all). Both need
+   * the same nudge, so both count as "not activated" everywhere in this
+   * feature — the picker's badge, and who actually gets emailed.
+   */
+  private notActivatedClause() {
+    return { OR: [{ passwordHash: null }, { mustChangePassword: true }] };
+  }
+
   private whereFor(f: BroadcastFilterDto) {
     const term = f.q?.trim();
-    return {
-      ...(f.role ? { role: f.role as any } : {}),
-      ...(f.isActive !== undefined ? { isActive: f.isActive === 'true' } : {}),
-      ...(f.hasPassword !== undefined
-        ? { passwordHash: f.hasPassword === 'true' ? { not: null } : null }
-        : {}),
-      ...(term
-        ? {
-          OR: [
-            { fullName: { contains: term, mode: 'insensitive' as const } },
-            { email: { contains: term, mode: 'insensitive' as const } },
-          ],
-        }
-        : {}),
-    };
+    const clauses: Record<string, unknown>[] = [];
+    if (f.role) clauses.push({ role: f.role as any });
+    if (f.isActive !== undefined) clauses.push({ isActive: f.isActive === 'true' });
+    if (f.hasPassword !== undefined) {
+      clauses.push(
+        f.hasPassword === 'true'
+          ? { passwordHash: { not: null }, mustChangePassword: false }
+          : this.notActivatedClause(),
+      );
+    }
+    if (term) {
+      clauses.push({
+        OR: [
+          { fullName: { contains: term, mode: 'insensitive' as const } },
+          { email: { contains: term, mode: 'insensitive' as const } },
+        ],
+      });
+    }
+    // Every clause above may itself use OR, so they must nest under an
+    // explicit AND — a plain object spread would let two top-level `OR`
+    // keys silently clobber each other.
+    return clauses.length ? { AND: clauses } : {};
   }
 
   /** Paginated, for the recipient picker to browse/preview before sending —
@@ -59,13 +80,16 @@ export class BroadcastService {
         take,
         select: {
           id: true, email: true, fullName: true, role: true, department: true,
-          isActive: true, passwordHash: true,
+          isActive: true, passwordHash: true, mustChangePassword: true,
         },
       }),
       this.prisma.scoped.user.count({ where }),
     ]);
-    // The hash itself never leaves the server — only whether one exists.
-    const items = rows.map(({ passwordHash, ...u }) => ({ ...u, hasPassword: passwordHash !== null }));
+    // The hash itself never leaves the server — only whether this account is
+    // genuinely activated (see notActivatedClause for what that means).
+    const items = rows.map(({ passwordHash, mustChangePassword, ...u }) => ({
+      ...u, hasPassword: passwordHash !== null && !mustChangePassword,
+    }));
     return toPage(items, total, page, pageSize);
   }
 
@@ -85,9 +109,8 @@ export class BroadcastService {
       return this.prisma.scoped.user.findMany({
         where: {
           id: { in: ids },
-          ...(forceHasPassword !== undefined
-            ? { passwordHash: forceHasPassword === 'true' ? { not: null } : null }
-            : {}),
+          ...(forceHasPassword === 'true' ? { passwordHash: { not: null }, mustChangePassword: false } : {}),
+          ...(forceHasPassword === 'false' ? this.notActivatedClause() : {}),
         },
         select: { id: true, email: true, fullName: true },
       });
@@ -106,10 +129,11 @@ export class BroadcastService {
   /**
    * Bulk-resend the "set your password" email.
    *
-   * Only ever reaches accounts that genuinely have no password yet, no
-   * matter what the caller filtered by — resending "activation" to someone
-   * already signed in before would be confusing and is not what this button
-   * is for (that is what admin-set password reset is for).
+   * Only ever reaches accounts that are not genuinely activated yet — see
+   * notActivatedClause() — no matter what the caller filtered by. Resending
+   * to someone who already replaced their own password would be confusing
+   * and is not what this button is for (that is what admin-set password
+   * reset is for).
    */
   async resendActivation(dto: ResendActivationDto) {
     const tenantId = this.tenantId();

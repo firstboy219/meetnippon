@@ -55,7 +55,10 @@ beforeAll(async () => {
       { id: 'bc-active-1', tenantId: T, email: 'active1@blast.co', fullName: 'Active One', role: 'EMPLOYEE', passwordHash: 'x' },
       { id: 'bc-approver-1', tenantId: T, email: 'appr1@blast.co', fullName: 'Approver One', role: 'APPROVER', passwordHash: 'x' },
       { id: 'bc-inactive-1', tenantId: T, email: 'inactive1@blast.co', fullName: 'Inactive One', role: 'EMPLOYEE', passwordHash: null, isActive: false },
-    ],
+      // Admin-created (or admin-reset), never signed in and changed it —
+      // has a real passwordHash, but it is the generic one, not theirs.
+      { id: 'bc-generic-1', tenantId: T, email: 'generic1@blast.co', fullName: 'Generic One', role: 'EMPLOYEE', passwordHash: 'temp-hash', mustChangePassword: true },
+    ] as any,
   });
 });
 afterAll(async () => { await wipe(); await prisma.$disconnect(); });
@@ -65,16 +68,22 @@ describe('recipients()', () => {
   it('filters by role, active status, and password state, with a derived hasPassword flag', async () => {
     const employees = await asAdmin(() => broadcast.recipients({ role: 'EMPLOYEE' } as any));
     expect(employees.items.map((u) => u.email).sort()).toEqual([
-      'active1@blast.co', 'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+      'active1@blast.co', 'generic1@blast.co', 'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
     ]);
 
+    // "Not activated" is two different DB states: no password at all, or a
+    // password that exists but is still the admin-set generic one.
     const pendingOnly = await asAdmin(() => broadcast.recipients({ hasPassword: 'false' } as any));
     expect(pendingOnly.items.map((u) => u.email).sort()).toEqual([
-      'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+      'generic1@blast.co', 'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
     ]);
     // The hash itself never leaves the service.
     expect((pendingOnly.items[0] as any).passwordHash).toBeUndefined();
     expect(pendingOnly.items.every((u) => u.hasPassword === false)).toBe(true);
+
+    // The reverse filter correctly excludes the generic-password account too.
+    const activatedOnly = await asAdmin(() => broadcast.recipients({ hasPassword: 'true' } as any));
+    expect(activatedOnly.items.map((u) => u.email)).not.toContain('generic1@blast.co');
 
     const activeOnly = await asAdmin(() => broadcast.recipients({ isActive: 'true' } as any));
     expect(activeOnly.items.map((u) => u.email)).not.toContain('inactive1@blast.co');
@@ -82,16 +91,18 @@ describe('recipients()', () => {
 });
 
 describe('resendActivation()', () => {
-  it('SELECTED: only actually emails the ones with no password, even if others were included', async () => {
+  it('SELECTED: only actually emails the ones not yet activated, even if others were included', async () => {
     const res = await asAdmin(() => broadcast.resendActivation({
       mode: 'SELECTED',
-      userIds: ['bc-pending-1', 'bc-active-1', 'bc-admin'], // active1 and admin already have a password
+      // active1 and admin have their own password; generic1 has a password
+      // too, but it is the admin-set one — still counts as not activated.
+      userIds: ['bc-pending-1', 'bc-active-1', 'bc-admin', 'bc-generic-1'],
     } as any));
-    expect(res.sent).toBe(1);
-    expect(mail.recipients()).toEqual(['pending1@blast.co']);
+    expect(res.sent).toBe(2);
+    expect(mail.recipients().sort()).toEqual(['generic1@blast.co', 'pending1@blast.co']);
   });
 
-  it('ALL_MATCHING: targets every unactivated user matching the filter, ignoring an explicit hasPassword override', async () => {
+  it('ALL_MATCHING: targets everyone not yet activated matching the filter, ignoring an explicit hasPassword override', async () => {
     const res = await asAdmin(() => broadcast.resendActivation({
       mode: 'ALL_MATCHING',
       // hasPassword: 'true' would (wrongly) ask for already-activated users —
@@ -100,15 +111,15 @@ describe('resendActivation()', () => {
       // by role and password state here, nothing else.
       filter: { role: 'EMPLOYEE', hasPassword: 'true' },
     } as any));
-    expect(res.sent).toBe(3);
+    expect(res.sent).toBe(4);
     expect(mail.recipients().sort()).toEqual([
-      'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+      'generic1@blast.co', 'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
     ]);
 
     const log = await prisma.auditLog.findFirst({
       where: { tenantId: T, action: 'broadcast.activation_resend' }, orderBy: { createdAt: 'desc' },
     });
-    expect((log?.metadata as any)?.count).toBe(3);
+    expect((log?.metadata as any)?.count).toBe(4);
   });
 
   it('SELECTED with no ids refuses rather than silently sending nothing', async () => {
@@ -125,8 +136,8 @@ describe('sendAnnouncement()', () => {
       subject: 'Office closed Friday',
       message: "We're closed this Friday for a public holiday.\nSee you Monday!",
     } as any));
-    expect(res.sent).toBe(3); // active1, pending1, pending2 — inactive1 excluded by isActive filter
-    expect(mail.sent).toHaveLength(3);
+    expect(res.sent).toBe(4); // active1, generic1, pending1, pending2 — inactive1 excluded by isActive filter
+    expect(mail.sent).toHaveLength(4);
     // One recipient per message, not a shared "to" array.
     for (const m of mail.sent) {
       const to = Array.isArray(m.to) ? m.to : [m.to];
@@ -138,7 +149,7 @@ describe('sendAnnouncement()', () => {
     const log = await prisma.auditLog.findFirst({
       where: { tenantId: T, action: 'broadcast.announcement_sent' }, orderBy: { createdAt: 'desc' },
     });
-    expect((log?.metadata as any)?.count).toBe(3);
+    expect((log?.metadata as any)?.count).toBe(4);
     expect((log?.metadata as any)?.subject).toBe('Office closed Friday');
   });
 });

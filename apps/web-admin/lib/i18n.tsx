@@ -439,8 +439,8 @@ const DICT: Record<string, { en: string; id: string }> = {
   'blast.mode_activation': { en: 'Resend activation', id: 'Kirim ulang aktivasi' },
   'blast.mode_announcement': { en: 'Send announcement', id: 'Kirim pengumuman' },
   'blast.mode_activation_hint': {
-    en: 'Only reaches accounts that have never set a password — resending to someone already signed in does nothing.',
-    id: 'Hanya sampai ke akun yang belum pernah membuat password — kirim ulang ke yang sudah pernah masuk tidak akan berpengaruh.',
+    en: 'Only reaches accounts that never set their own password — never activated at all, or still on the generic password an admin set for them.',
+    id: 'Hanya sampai ke akun yang belum pernah membuat password sendiri — belum aktivasi sama sekali, atau masih pakai password generik yang dibuat admin.',
   },
   'blast.mode_announcement_hint': {
     en: 'A custom email to whoever you pick below — a policy change, a maintenance notice, anything that is not tied to one booking.',
