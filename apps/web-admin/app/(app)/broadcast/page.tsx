@@ -131,9 +131,9 @@ export default function BroadcastPage() {
     <div>
       <div className="page-head"><h1>{t('blast.title')}</h1></div>
 
-      <div className="toolbar" style={{ marginBottom: 14 }}>
+      <div className="row-actions" style={{ marginBottom: 14 }}>
         {(['ACTIVATION', 'ANNOUNCEMENT'] as const).map((m) => (
-          <button key={m} type="button" className={`filter-pill ${mode === m ? 'active' : ''}`}
+          <button key={m} type="button" className={`btn ${mode === m ? 'btn-primary' : 'btn-ghost'}`}
             aria-pressed={mode === m} onClick={() => setMode(m)}>
             {t(m === 'ACTIVATION' ? 'blast.mode_activation' : 'blast.mode_announcement')}
           </button>
