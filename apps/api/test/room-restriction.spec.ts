@@ -224,3 +224,43 @@ describe('free windows (drives both start and end times)', () => {
     expect(fw.dayWindow).toBeNull();
   });
 });
+
+describe('recurring bookings (DAILY vs. a closed weekday)', () => {
+  it('skips a day the policy closes instead of failing the whole series', async () => {
+    // Exclude the weekday two days after the probe day, so a 4-occurrence
+    // DAILY series starting on the probe day crosses exactly one closed day.
+    const closed = new Date(at(12).getTime() + 2 * 86400000).getUTCDay() || 7;
+    const days = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== closed);
+    await setRoomPolicy({ businessHours: { start: '08:00', end: '18:00', days } });
+
+    const result: any = await asVip(() => bookings.create({
+      title: 'Daily standup', resourceId: R,
+      startTime: at(9).toISOString(), endTime: at(10).toISOString(),
+      recurrence: { freq: 'DAILY', count: 4 },
+    } as any));
+
+    expect(result.count).toBe(4);
+    const starts = result.bookings.map((b: any) => b.startTime.getTime());
+    // Day 0, 1, then the closed day is skipped, so day 3 and 4 fill it out —
+    // never a booking on the closed weekday.
+    expect(starts).toEqual([
+      at(9).getTime(),
+      at(9).getTime() + 1 * 86400000,
+      at(9).getTime() + 3 * 86400000,
+      at(9).getTime() + 4 * 86400000,
+    ]);
+    for (const s of starts) {
+      expect(new Date(s).getUTCDay() || 7).not.toBe(closed);
+    }
+  });
+
+  it('rejects outright when the requested day itself is closed (not a recurrence issue)', async () => {
+    const wd = new Date(`${D.toISOString().slice(0, 10)}T12:00:00Z`).getUTCDay() || 7;
+    const others = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== wd);
+    await setRoomPolicy({ businessHours: { start: '08:00', end: '18:00', days: others } });
+    await expect(asVip(() => bookings.create({
+      title: 'Wrong day', resourceId: R,
+      startTime: at(9).toISOString(), endTime: at(10).toISOString(),
+    } as any))).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

@@ -88,4 +88,34 @@ describe('generateOccurrences', () => {
     const occ = generateOccurrences(base, { freq: 'DAILY', count: 2 });
     expect(occ[1].start.toISOString()).toBe('2026-07-21T10:00:00.000Z');
   });
+
+  it('DAILY skips a weekday the business-hours policy excludes', () => {
+    // The day right after `base` is the one excluded — "every day" then
+    // means every OPEN day, so it should be skipped rather than generated
+    // and later rejected by withinBusinessHours(), which used to abort the
+    // whole create() call even though the picked slot itself was valid.
+    const excluded = (isoWeekday(base.start) % 7) + 1;
+    const allowedDays = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== excluded);
+    const occ = generateOccurrences(base, { freq: 'DAILY', count: 3 }, 'UTC', allowedDays);
+    expect(occ).toHaveLength(3);
+    expect(occ.map((o) => o.start.toISOString())).toEqual([
+      '2026-07-20T10:00:00.000Z',
+      '2026-07-22T10:00:00.000Z',
+      '2026-07-23T10:00:00.000Z',
+    ]);
+    for (const o of occ) expect(isoWeekday(o.start)).not.toBe(excluded);
+  });
+
+  it('WEEKLY is unaffected by allowedDays — the anchor weekday was already chosen validly', () => {
+    // Excluding every OTHER weekday must not change a WEEKLY series: each
+    // occurrence lands on the same weekday as `base`, which the picker only
+    // ever offers when that day is itself allowed.
+    const onlyBaseWeekday = [isoWeekday(base.start)];
+    const occ = generateOccurrences(base, { freq: 'WEEKLY', count: 3 }, 'UTC', onlyBaseWeekday);
+    expect(occ.map((o) => o.start.toISOString())).toEqual([
+      '2026-07-20T10:00:00.000Z',
+      '2026-07-27T10:00:00.000Z',
+      '2026-08-03T10:00:00.000Z',
+    ]);
+  });
 });

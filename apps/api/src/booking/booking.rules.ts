@@ -41,15 +41,38 @@ function parseHHMM(s: string): number {
  * Expand a base slot into recurring occurrences (inclusive of the base).
  * Steps by calendar days on the tenant's wall clock, so an occurrence keeps its
  * local start time across a DST transition rather than drifting an hour.
+ *
+ * `allowedDays` (ISO weekday 1=Mon…7=Sun, from the resolved business-hours
+ * policy) is only meaningful for DAILY: "every day" means every day the room
+ * is open, so a day the policy excludes (e.g. Sunday closed) is skipped
+ * rather than generated and then rejected by withinBusinessHours() — that
+ * used to fail the whole create() call even though the picked slot itself
+ * was free and valid. WEEKLY always lands on the same weekday as the base,
+ * which was already chosen from a day the picker offered, so it needs no
+ * skipping.
  */
-export function generateOccurrences(base: Slot, recurrence?: Recurrence, tz = 'UTC'): Slot[] {
+export function generateOccurrences(
+  base: Slot, recurrence?: Recurrence, tz = 'UTC', allowedDays?: number[],
+): Slot[] {
   if (!recurrence) return [base];
-  const stepDays = recurrence.freq === 'WEEKLY' ? 7 : 1;
   const durationMs = base.end.getTime() - base.start.getTime();
   const out: Slot[] = [];
-  for (let i = 0; i < recurrence.count; i++) {
-    const start = shiftLocalDays(base.start, i * stepDays, tz);
+  if (recurrence.freq === 'WEEKLY') {
+    for (let i = 0; i < recurrence.count; i++) {
+      const start = shiftLocalDays(base.start, i * 7, tz);
+      out.push({ start, end: new Date(start.getTime() + durationMs) });
+    }
+    return out;
+  }
+  // DAILY — walk forward one calendar day at a time, skipping any weekday
+  // the policy does not allow, until `count` occurrences are collected. The
+  // guard bounds the walk even if `allowedDays` were ever empty.
+  const maxSteps = recurrence.count * 14 + 60;
+  for (let day = 0, found = 0; found < recurrence.count && day < maxSteps; day += 1) {
+    const start = shiftLocalDays(base.start, day, tz);
+    if (allowedDays && !allowedDays.includes(isoWeekday(start, tz))) continue;
     out.push({ start, end: new Date(start.getTime() + durationMs) });
+    found += 1;
   }
   return out;
 }

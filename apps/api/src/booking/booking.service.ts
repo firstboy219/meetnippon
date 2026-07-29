@@ -301,7 +301,7 @@ export class BookingService {
     }
 
     const base: Slot = { start: new Date(dto.startTime), end: new Date(dto.endTime) };
-    const occurrences = generateOccurrences(base, dto.recurrence, tz);
+    const occurrences = generateOccurrences(base, dto.recurrence, tz, rules.businessHours.days);
 
     // Beyond the booking horizon: refused by default, but the admin can elect
     // (per policy) to accept it and route it through approval instead.
