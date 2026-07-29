@@ -30,6 +30,15 @@ export interface AdminUser {
   createdAt: string; tempPassword?: string;
 }
 
+/** A row in the bulk-email recipient picker. */
+export interface BroadcastRecipient {
+  id: string; email: string; fullName: string; role: UserRole;
+  department: string | null; isActive: boolean;
+  /** Whether they've ever set a password — the activation blast only ever
+   *  actually reaches accounts where this is false, no matter the filter. */
+  hasPassword: boolean;
+}
+
 export interface AdminResource {
   id: string; type: 'ROOM' | 'DESK'; name: string; category: string | null;
   capacity: number; facilities: string[]; zone: string | null;

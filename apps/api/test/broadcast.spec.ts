@@ -1,0 +1,144 @@
+/**
+ * Admin bulk email: resend activation to whoever hasn't set a password yet,
+ * and a free-form announcement to a chosen slice of the roster. Live DB.
+ */
+import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { AuditService } from '../src/audit/audit.service';
+import { AuthService } from '../src/auth/auth.service';
+import { NotificationService } from '../src/notification/notification.service';
+import { MenuVisibilityService } from '../src/menu/menu-visibility.service';
+import { FeatureFlagService } from '../src/flags/feature-flag.service';
+import { TenantResolverService } from '../src/tenant/tenant-resolver.service';
+import { BroadcastService } from '../src/broadcast/broadcast.service';
+import { TestMailService } from './helpers/test-mail';
+import { runWithTenant } from '../src/tenant/tenant-context';
+
+const T = 'bc-tenant';
+const ADMIN = 'bc-admin';
+
+const prisma = new PrismaService();
+const audit = new AuditService(prisma);
+const mail = new TestMailService();
+const config = new ConfigService({
+  APP_BASE_URL: 'https://test.local',
+  JWT_ACCESS_SECRET: 'a'.repeat(64),
+  JWT_REFRESH_SECRET: 'b'.repeat(64),
+});
+const flags = new FeatureFlagService(prisma, audit, config);
+const notifications = new NotificationService(prisma, flags);
+const menuVisibility = new MenuVisibilityService(prisma, audit);
+const resolver = new TenantResolverService(prisma, config);
+const auth = new AuthService(prisma, new JwtService({}), config, audit, resolver, mail, notifications, menuVisibility);
+const broadcast = new BroadcastService(prisma, audit, mail, auth);
+
+const asAdmin = <X>(fn: () => Promise<X>) =>
+  runWithTenant({ tenantId: T, userId: ADMIN, role: 'ADMIN' }, fn);
+
+async function wipe() {
+  await prisma.auditLog.deleteMany({ where: { tenantId: T } });
+  await prisma.user.deleteMany({ where: { tenantId: T } });
+  await prisma.tenant.deleteMany({ where: { id: T } });
+}
+
+beforeAll(async () => {
+  await prisma.$connect();
+  await wipe();
+  await prisma.tenant.create({ data: { id: T, name: 'Blast Co', slug: 'blast-co' } });
+  await prisma.user.createMany({
+    data: [
+      { id: ADMIN, tenantId: T, email: 'admin@blast.co', fullName: 'Admin', role: 'ADMIN', passwordHash: 'x' },
+      { id: 'bc-pending-1', tenantId: T, email: 'pending1@blast.co', fullName: 'Pending One', role: 'EMPLOYEE', passwordHash: null },
+      { id: 'bc-pending-2', tenantId: T, email: 'pending2@blast.co', fullName: 'Pending Two', role: 'EMPLOYEE', passwordHash: null },
+      { id: 'bc-active-1', tenantId: T, email: 'active1@blast.co', fullName: 'Active One', role: 'EMPLOYEE', passwordHash: 'x' },
+      { id: 'bc-approver-1', tenantId: T, email: 'appr1@blast.co', fullName: 'Approver One', role: 'APPROVER', passwordHash: 'x' },
+      { id: 'bc-inactive-1', tenantId: T, email: 'inactive1@blast.co', fullName: 'Inactive One', role: 'EMPLOYEE', passwordHash: null, isActive: false },
+    ],
+  });
+});
+afterAll(async () => { await wipe(); await prisma.$disconnect(); });
+beforeEach(() => mail.reset());
+
+describe('recipients()', () => {
+  it('filters by role, active status, and password state, with a derived hasPassword flag', async () => {
+    const employees = await asAdmin(() => broadcast.recipients({ role: 'EMPLOYEE' } as any));
+    expect(employees.items.map((u) => u.email).sort()).toEqual([
+      'active1@blast.co', 'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+    ]);
+
+    const pendingOnly = await asAdmin(() => broadcast.recipients({ hasPassword: 'false' } as any));
+    expect(pendingOnly.items.map((u) => u.email).sort()).toEqual([
+      'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+    ]);
+    // The hash itself never leaves the service.
+    expect((pendingOnly.items[0] as any).passwordHash).toBeUndefined();
+    expect(pendingOnly.items.every((u) => u.hasPassword === false)).toBe(true);
+
+    const activeOnly = await asAdmin(() => broadcast.recipients({ isActive: 'true' } as any));
+    expect(activeOnly.items.map((u) => u.email)).not.toContain('inactive1@blast.co');
+  });
+});
+
+describe('resendActivation()', () => {
+  it('SELECTED: only actually emails the ones with no password, even if others were included', async () => {
+    const res = await asAdmin(() => broadcast.resendActivation({
+      mode: 'SELECTED',
+      userIds: ['bc-pending-1', 'bc-active-1', 'bc-admin'], // active1 and admin already have a password
+    } as any));
+    expect(res.sent).toBe(1);
+    expect(mail.recipients()).toEqual(['pending1@blast.co']);
+  });
+
+  it('ALL_MATCHING: targets every unactivated user matching the filter, ignoring an explicit hasPassword override', async () => {
+    const res = await asAdmin(() => broadcast.resendActivation({
+      mode: 'ALL_MATCHING',
+      // hasPassword: 'true' would (wrongly) ask for already-activated users —
+      // forced to false regardless. No isActive filter, so the deactivated
+      // employee with no password is included too — the filter only narrows
+      // by role and password state here, nothing else.
+      filter: { role: 'EMPLOYEE', hasPassword: 'true' },
+    } as any));
+    expect(res.sent).toBe(3);
+    expect(mail.recipients().sort()).toEqual([
+      'inactive1@blast.co', 'pending1@blast.co', 'pending2@blast.co',
+    ]);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { tenantId: T, action: 'broadcast.activation_resend' }, orderBy: { createdAt: 'desc' },
+    });
+    expect((log?.metadata as any)?.count).toBe(3);
+  });
+
+  it('SELECTED with no ids refuses rather than silently sending nothing', async () => {
+    await expect(asAdmin(() => broadcast.resendActivation({ mode: 'SELECTED', userIds: [] } as any)))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('sendAnnouncement()', () => {
+  it('emails each recipient individually — never one message with everyone in "to"', async () => {
+    const res = await asAdmin(() => broadcast.sendAnnouncement({
+      mode: 'ALL_MATCHING',
+      filter: { role: 'EMPLOYEE', isActive: 'true' },
+      subject: 'Office closed Friday',
+      message: "We're closed this Friday for a public holiday.\nSee you Monday!",
+    } as any));
+    expect(res.sent).toBe(3); // active1, pending1, pending2 — inactive1 excluded by isActive filter
+    expect(mail.sent).toHaveLength(3);
+    // One recipient per message, not a shared "to" array.
+    for (const m of mail.sent) {
+      const to = Array.isArray(m.to) ? m.to : [m.to];
+      expect(to).toHaveLength(1);
+    }
+    expect(mail.sent[0].subject).toBe('Office closed Friday');
+    expect(mail.sent[0].intro).toContain('See you Monday!');
+
+    const log = await prisma.auditLog.findFirst({
+      where: { tenantId: T, action: 'broadcast.announcement_sent' }, orderBy: { createdAt: 'desc' },
+    });
+    expect((log?.metadata as any)?.count).toBe(3);
+    expect((log?.metadata as any)?.subject).toBe('Office closed Friday');
+  });
+});

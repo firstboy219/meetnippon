@@ -302,7 +302,7 @@ ${input.eyebrow ? `<td align="right" style="color:${onBrand};opacity:.9;font-siz
 <tr><td colspan="2" style="height:4px"></td></tr>${rows}</table>`
         : '';
       content = `<h1 style="margin:0 0 8px;font-size:21px;font-weight:700;color:#20242B;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${esc(input.heading ?? '')}</h1>
-${input.intro ? `<p style="margin:0 0 18px;color:#4A4F57;font-size:14px;line-height:1.65">${esc(input.intro)}</p>` : ''}
+${input.intro ? `<p style="margin:0 0 18px;color:#4A4F57;font-size:14px;line-height:1.65">${esc(input.intro).replace(/\n/g, '<br>')}</p>` : ''}
 ${detailsTable}`;
     } else {
       content = `<div style="font-size:15px;line-height:1.65;color:#20242B">${esc(input.text).replace(/\n/g, '<br>')}</div>`;

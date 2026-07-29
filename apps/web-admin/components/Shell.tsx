@@ -24,6 +24,7 @@ const ICONS: Record<string, React.ReactNode> = {
   '/billing': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>,
   '/bookings': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>,
   '/audit': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>,
+  '/broadcast': <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 11l18-7-7 18-3-8-8-3z" /></svg>,
 };
 
 /**
@@ -47,6 +48,7 @@ const ITEMS = [
   { href: '/billing', key: 'nav.billing' },
   { href: '/bookings', key: 'nav.bookings' },
   { href: '/audit', key: 'nav.audit' },
+  { href: '/broadcast', key: 'nav.broadcast' },
 ];
 
 export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMobile: () => void }) {
