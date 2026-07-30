@@ -469,9 +469,12 @@ export default function MeetingComposer({
                     <span className="busy-time">{hm(new Date(b.startTime).getTime(), tz)}–{hm(new Date(b.endTime).getTime(), tz)}</span>
                     <span className="busy-who">{b.title}{b.ownerName ? ` · ${b.ownerName}` : ''}{mine ? ` · ${t('compose.busy_mine')}` : ''}</span>
                     {!mine ? (
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRequesting({
-                        id: b.id, title: b.title, startTime: b.startTime, endTime: b.endTime, ownerName: b.ownerName,
-                      })}>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                        if (!title.trim()) { push(t('creq.need_title'), 'error'); return; }
+                        setRequesting({
+                          id: b.id, title: b.title, startTime: b.startTime, endTime: b.endTime, ownerName: b.ownerName,
+                        });
+                      }}>
                         {t('compose.busy_request')}
                       </button>
                     ) : null}
@@ -570,7 +573,16 @@ export default function MeetingComposer({
       </form>
       {requesting ? (
         <RequestChangeModal booking={requesting} onClose={() => setRequesting(null)}
-          onSent={() => setRequesting(null)} />
+          draft={{
+            title: title.trim(),
+            type,
+            ...(type !== 'OFFLINE' && meetingLink.trim() ? { meetingLink: meetingLink.trim() } : {}),
+            date,
+            durationMinutes: duration,
+            participants,
+            notify,
+          }}
+          onSent={() => { setRequesting(null); onClose(); }} />
       ) : null}
     </div>
   );

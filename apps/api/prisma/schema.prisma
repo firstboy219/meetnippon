@@ -465,10 +465,18 @@ model Booking {
   @@index([recurringGroupId])
 }
 
-/// A colleague's proposal to move someone else's meeting (tester feedback #4).
-/// The booking's author stays in charge: nothing changes on the calendar until
-/// they approve, at which point the move goes through the same policy gate as
-/// any edit.
+/// A colleague asking to carve a slice out of someone else's booking so their
+/// own meeting can exist too (tester feedback #4). The requester's own
+/// meeting is never created up front — nothing is booked for anyone until
+/// the author decides:
+///  - APPROVED: the author picks a new time for THEIR OWN booking (the
+///    granted slice is off the table for that pick), then the requester's
+///    full originally-wanted meeting is created.
+///  - REJECTED: the requester's meeting is created automatically at the
+///    fallback range — their wanted range with the granted slice trimmed off.
+/// The booking's author stays in charge: nothing changes on the calendar
+/// until they decide, and every resulting booking goes through the same
+/// policy gate as any create/edit.
 model BookingChangeRequest {
   id                String           @id @default(cuid())
   tenantId          String
@@ -477,8 +485,23 @@ model BookingChangeRequest {
   booking           Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   requesterId       String
   requester         User             @relation("cr_requester", fields: [requesterId], references: [id], onDelete: Cascade)
-  proposedStartTime DateTime?
-  proposedEndTime   DateTime?
+
+  /// The slice of the existing booking's time the requester needs freed up.
+  /// Always touches one edge of `draftStartTime`/`draftEndTime` below, so
+  /// subtracting it leaves a single contiguous fallback range.
+  requestedStartTime DateTime
+  requestedEndTime   DateTime
+
+  /// The requester's own meeting, held here until the request is decided.
+  draftTitle         String
+  draftDescription   String?
+  draftType          BookingType @default(OFFLINE)
+  draftMeetingLink   String?
+  draftStartTime     DateTime
+  draftEndTime       DateTime
+  draftParticipants  Json        @default("[]") // [{userId?,email,external:bool}]
+  draftNotify        Boolean     @default(true)
+
   note              String?
   status            ApprovalDecision @default(PENDING)
   /// The author's reply when deciding.

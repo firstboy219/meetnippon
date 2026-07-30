@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { ApprovalStep, ChangeRequest } from '@/lib/types';
 import { fmtDateTime } from '@/lib/format';
+import ApproveRescheduleModal from '@/components/ApproveRescheduleModal';
 
 export default function ApprovalsPage() {
   const { t } = useI18n();
@@ -14,6 +15,7 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState(false);
+  const [approving, setApproving] = useState<ChangeRequest | null>(null);
 
   const load = useCallback(() => {
     setErr(false);
@@ -41,15 +43,13 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function decideChange(id: string, decision: 'APPROVED' | 'REJECTED') {
+  async function rejectChange(id: string) {
     setBusy(id);
     try {
-      await api.post(`/change-requests/${id}/decide`, { decision });
-      push(decision === 'APPROVED' ? t('creq.applied') : t('common.rejected'), 'success');
+      await api.post(`/change-requests/${id}/decide`, { decision: 'REJECTED' });
+      push(t('common.rejected'), 'success');
       load();
     } catch (e: any) {
-      // The move goes through the same policy gate as any edit — a conflict
-      // that appeared since the request was made shows up here, verbatim.
       push(e?.message || t('appr.toast_fail'), 'error');
     } finally {
       setBusy(null);
@@ -113,21 +113,23 @@ export default function ApprovalsPage() {
                   <span className="creq-label">{t('creq.current')}</span>
                   {fmtDateTime(c.booking.startTime)} – {fmtDateTime(c.booking.endTime)}
                 </div>
-                {c.proposedStartTime && c.proposedEndTime ? (
-                  <div>
-                    <span className="creq-label">{t('creq.proposed')}</span>
-                    <strong>{fmtDateTime(c.proposedStartTime)} – {fmtDateTime(c.proposedEndTime)}</strong>
-                  </div>
-                ) : null}
+                <div>
+                  <span className="creq-label">{t('creq.requested')}</span>
+                  <strong>{fmtDateTime(c.requestedStartTime)} – {fmtDateTime(c.requestedEndTime)}</strong>
+                </div>
+                <div>
+                  <span className="creq-label">{t('creq.for_meeting')}</span>
+                  {c.draftTitle} ({fmtDateTime(c.draftStartTime)} – {fmtDateTime(c.draftEndTime)})
+                </div>
               </div>
               {c.note ? <div className="info-box" style={{ marginTop: 10 }}>&ldquo;{c.note}&rdquo;</div> : null}
               <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                 <button className="btn btn-primary" style={{ flex: 1 }} disabled={busy === c.id}
-                  onClick={() => decideChange(c.id, 'APPROVED')}>
-                  {c.proposedStartTime ? t('creq.approve_apply') : t('appr.approve')}
+                  onClick={() => setApproving(c)}>
+                  {t('appr.approve')}
                 </button>
                 <button className="btn btn-coral" style={{ flex: 1 }} disabled={busy === c.id}
-                  onClick={() => decideChange(c.id, 'REJECTED')}>
+                  onClick={() => rejectChange(c.id)}>
                   {t('appr.reject')}
                 </button>
               </div>
@@ -135,6 +137,11 @@ export default function ApprovalsPage() {
           ))}
         </div>
       )}
+
+      {approving ? (
+        <ApproveRescheduleModal cr={approving} onClose={() => setApproving(null)}
+          onDecided={() => { setApproving(null); load(); }} />
+      ) : null}
     </div>
   );
 }

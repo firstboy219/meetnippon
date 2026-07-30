@@ -7,7 +7,6 @@ import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
 import MeetingComposer from '@/components/MeetingComposer';
-import RequestChangeModal from '@/components/RequestChangeModal';
 import type { Booking, DayGrid } from '@/lib/types';
 import { fmtDayLong, fmtTime, todayLocal, tzLabel } from '@/lib/format';
 
@@ -49,9 +48,6 @@ export default function SchedulePage() {
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<Booking | null>(null);
   const [quick, setQuick] = useState<{ roomId: string; roomName: string; floor?: string | null; start: string } | null>(null);
-  const [requesting, setRequesting] = useState<{
-    id: string; title: string; startTime: string; endTime: string; ownerName?: string | null;
-  } | null>(null);
   const nowRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(() => {
@@ -188,12 +184,14 @@ export default function SchedulePage() {
                             ev.stopPropagation();   // do not also trigger "book this slot"
                             if (mine && new Date(b.endTime) > new Date()) setEditing(b as Booking);
                             else if (new Date(b.endTime) > new Date()) {
-                              // Someone else's meeting: propose a change and let
-                              // the author decide, instead of a dead-end toast.
-                              setRequesting({
-                                id: b.id, title: b.title,
-                                startTime: b.startTime, endTime: b.endTime,
-                                ownerName: b.principal?.fullName ?? null,
+                              // Someone else's meeting: open the booking form for
+                              // this room instead of a dead-end toast — "Request
+                              // reschedule" on the busy row there can ask the
+                              // author for part of their time, once there is an
+                              // actual meeting of your own to negotiate for.
+                              setQuick({
+                                roomId: room.id, roomName: room.name, floor: room.floor?.name ?? null,
+                                start: fmtTime(b.startTime),
                               });
                             } else push(`${b.title} · ${b.principal?.fullName ?? ''}`, 'success');
                           }}>
@@ -228,10 +226,6 @@ export default function SchedulePage() {
         // to drive the rich picker from — falls back to the simple form.
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
-      ) : null}
-      {requesting ? (
-        <RequestChangeModal booking={requesting} onClose={() => setRequesting(null)}
-          onSent={() => setRequesting(null)} />
       ) : null}
     </div>
   );

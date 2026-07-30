@@ -167,8 +167,14 @@ export interface FreeWindows {
 /** A colleague's proposal to move a meeting; the author decides. */
 export interface ChangeRequest {
   id: string;
-  proposedStartTime: string | null;
-  proposedEndTime: string | null;
+  requestedStartTime: string;
+  requestedEndTime: string;
+  draftTitle: string;
+  draftDescription?: string | null;
+  draftType: 'OFFLINE' | 'ONLINE' | 'HYBRID';
+  draftMeetingLink?: string | null;
+  draftStartTime: string;
+  draftEndTime: string;
   note: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   decisionNote?: string | null;
@@ -176,7 +182,7 @@ export interface ChangeRequest {
   createdAt: string;
   booking: {
     id: string; title: string; startTime: string; endTime: string;
-    status?: string; resource?: { name: string } | null;
+    status?: string; resourceId?: string | null; resource?: { name: string } | null;
   };
   requester?: { fullName: string; email: string };
 }

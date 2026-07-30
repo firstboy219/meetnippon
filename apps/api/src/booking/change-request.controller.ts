@@ -28,6 +28,6 @@ export class ChangeRequestController {
 
   @Post('change-requests/:id/decide')
   decide(@Param('id') id: string, @Body() dto: DecideChangeRequestDto) {
-    return this.svc.decide(id, dto.decision, dto.note);
+    return this.svc.decide(id, dto.decision, dto.note, dto.ownerNewStartTime, dto.ownerNewEndTime);
   }
 }

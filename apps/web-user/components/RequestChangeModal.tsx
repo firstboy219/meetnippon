@@ -1,20 +1,35 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
+import type { Participant } from '@/lib/types';
+import { toWire } from '@/lib/participants';
 import { fmtDateTime, getTenantTz, tzLabel, zonedToUtcIso } from '@/lib/format';
 
+export interface ChangeRequestDraft {
+  title: string;
+  description?: string;
+  type: 'OFFLINE' | 'ONLINE' | 'HYBRID';
+  meetingLink?: string;
+  date: string;
+  durationMinutes: number;
+  participants: Participant[];
+  notify: boolean;
+}
+
 /**
- * Ask the author of someone else's booking to move it (tester feedback #4).
- * Nothing changes on the calendar here — the request lands in the author's
- * approval queue and they decide.
+ * Ask the author of someone else's booking to free up a slice of it so this
+ * meeting can exist too (tester feedback #4, extended). Nothing is booked
+ * for either side here — the request lands in the author's approval queue,
+ * and only their decision puts anything on the calendar.
  */
-export default function RequestChangeModal({ booking, onClose, onSent }: {
+export default function RequestChangeModal({ booking, draft, onClose, onSent }: {
   booking: {
     id: string; title: string; startTime: string; endTime: string;
     ownerName?: string | null;
   };
+  draft: ChangeRequestDraft;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -22,24 +37,21 @@ export default function RequestChangeModal({ booking, onClose, onSent }: {
   const { push } = useToast();
   const tz = getTenantTz();
 
-  // Prefill with the booking's own local wall-clock so "shift by an hour"
-  // starts from what is on the board, not from blank fields.
   const local = (iso: string) => {
     const d = new Date(iso);
-    const fmt = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
     });
-    const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
-    return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+    return fmt.format(d);
   };
-  const s0 = local(booking.startTime);
-  const e0 = local(booking.endTime);
+  const busyStart = local(booking.startTime);
+  const busyEnd = local(booking.endTime);
 
-  const [proposeTime, setProposeTime] = useState(true);
-  const [date, setDate] = useState(s0.date);
-  const [start, setStart] = useState(s0.time);
-  const [end, setEnd] = useState(e0.time);
+  // Defaults to the whole busy stretch — the common case is "I need your
+  // entire slot" — but it is editable down to whichever edge is actually
+  // in the way.
+  const [carveStart, setCarveStart] = useState(busyStart);
+  const [carveEnd, setCarveEnd] = useState(busyEnd);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -49,16 +61,56 @@ export default function RequestChangeModal({ booking, onClose, onSent }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const toMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const cs = toMin(carveStart);
+  const ce = toMin(carveEnd);
+  const bs = toMin(busyStart);
+  const be = toMin(busyEnd);
+
+  // Must land on one edge of the busy stretch — otherwise, if this is later
+  // declined, your own meeting could not shrink to a single contiguous range.
+  const touchesStart = cs === bs;
+  const touchesEnd = ce === be;
+  const withinBusy = cs >= bs && ce <= be && ce > cs;
+  const valid = withinBusy && (touchesStart || touchesEnd);
+
+  // Your own wanted range: anchored at whichever edge the carve-out touches,
+  // extended by the duration already chosen in the meeting form.
+  const wanted = useMemo(() => {
+    if (!valid) return null;
+    const dur = draft.durationMinutes;
+    return touchesStart
+      ? { start: cs, end: cs + dur }
+      : { start: ce - dur, end: ce };
+  }, [valid, touchesStart, cs, ce, draft.durationMinutes]);
+
+  const fmtHM = (min: number) => {
+    const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
+    const m = ((min % 60) + 60) % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!proposeTime && !note.trim()) { push(t('creq.need_something'), 'error'); return; }
+    if (!wanted) return;
     setBusy(true);
     try {
       await api.post(`/bookings/${booking.id}/change-requests`, {
-        ...(proposeTime ? {
-          proposedStartTime: zonedToUtcIso(date, start, tz),
-          proposedEndTime: zonedToUtcIso(date, end, tz),
-        } : {}),
+        requestedStartTime: zonedToUtcIso(draft.date, carveStart, tz),
+        requestedEndTime: zonedToUtcIso(draft.date, carveEnd, tz),
+        draft: {
+          title: draft.title,
+          ...(draft.description ? { description: draft.description } : {}),
+          type: draft.type,
+          ...(draft.meetingLink ? { meetingLink: draft.meetingLink } : {}),
+          startTime: zonedToUtcIso(draft.date, fmtHM(wanted.start), tz),
+          endTime: zonedToUtcIso(draft.date, fmtHM(wanted.end), tz),
+          ...(draft.participants.length ? { participants: toWire(draft.participants) } : {}),
+          notify: draft.notify,
+        },
         ...(note.trim() ? { note: note.trim() } : {}),
       });
       push(t('creq.sent'), 'success');
@@ -87,29 +139,26 @@ export default function RequestChangeModal({ booking, onClose, onSent }: {
           {t('creq.explain')}
         </div>
 
-        <label className="check-row">
-          <input type="checkbox" checked={proposeTime} onChange={(e) => setProposeTime(e.target.checked)} />
-          <span>{t('creq.propose_time')}</span>
-        </label>
+        <div className="f-row2">
+          <div className="f-group">
+            <label className="f-label">{t('creq.need_start')}</label>
+            <input className="f-input" type="time" value={carveStart} min={busyStart} max={busyEnd}
+              onChange={(e) => setCarveStart(e.target.value)} required />
+          </div>
+          <div className="f-group">
+            <label className="f-label">{t('creq.need_end')}</label>
+            <input className="f-input" type="time" value={carveEnd} min={busyStart} max={busyEnd}
+              onChange={(e) => setCarveEnd(e.target.value)} required />
+          </div>
+        </div>
+        <div className="f-hint" style={{ marginBottom: 10 }}>{t('modal.tz_hint')} ({tzLabel(tz)})</div>
 
-        {proposeTime ? (
-          <>
-            <div className="f-group">
-              <label className="f-label">{t('modal.date')}</label>
-              <input className="f-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-            </div>
-            <div className="f-row2">
-              <div className="f-group">
-                <label className="f-label">{t('modal.start')}</label>
-                <input className="f-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} required />
-              </div>
-              <div className="f-group">
-                <label className="f-label">{t('modal.end')}</label>
-                <input className="f-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
-              </div>
-            </div>
-            <div className="f-hint" style={{ marginBottom: 12 }}>{t('modal.tz_hint')} ({tzLabel(tz)})</div>
-          </>
+        {!valid ? (
+          <div className="warn-box" style={{ marginBottom: 12 }}>{t('creq.edge_hint')}</div>
+        ) : wanted ? (
+          <div className="info-box" style={{ marginBottom: 12 }}>
+            {t('creq.your_meeting')}: <strong>{fmtHM(wanted.start)}–{fmtHM(wanted.end)}</strong>
+          </div>
         ) : null}
 
         <div className="f-group">
@@ -120,7 +169,7 @@ export default function RequestChangeModal({ booking, onClose, onSent }: {
 
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="btn btn-primary" disabled={busy}>
+          <button className="btn btn-primary" disabled={busy || !valid}>
             {busy ? <span className="spinner" /> : t('creq.send')}
           </button>
         </div>
