@@ -118,9 +118,11 @@ export class AuthService {
       await this.parkRegistration(tenant.tenantId, addr);
       return;
     }
-    // Only accounts that have never set a password can be activated this way;
-    // otherwise this would be an unauthenticated password-reset for anyone.
-    if (!user.isActive || user.passwordHash) return;
+    // Eligible if the account has never set its own password — either no
+    // password at all, or still on the generic one an admin issued
+    // (mustChangePassword). A real self-set password blocks this path,
+    // otherwise it would be an unauthenticated password-reset for anyone.
+    if (!user.isActive || (user.passwordHash && !user.mustChangePassword)) return;
     await this.sendActivationEmail(user);
   }
 

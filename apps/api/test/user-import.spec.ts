@@ -37,8 +37,8 @@ const config = new ConfigService({
 const jwt = new JwtService({});
 const resolver = new TenantResolverService(prisma, config);
 const flags = new FeatureFlagService(prisma, audit, config);
-const specNotifications = new NotificationService(prisma, flags);
-const auth = new AuthService(prisma, jwt, config, audit, resolver, mail, specNotifications, specMenuVisibility);
+const notifications = new NotificationService(prisma, flags);
+const auth = new AuthService(prisma, jwt, config, audit, resolver, mail, notifications, specMenuVisibility);
 const plan = new PlanService(prisma, flags);
 const users = new UserAdminService(prisma, audit, plan, mail, config, auth);
 
@@ -170,6 +170,18 @@ describe('activation', () => {
     });
     await auth.requestActivation('has-pw@imp.co', 'imp-co');
     expect(mail.sent).toHaveLength(0);
+
+    // An admin-issued generic password is not a "real" one — the person has
+    // never actually activated, so this must still send.
+    await prisma.user.create({
+      data: {
+        tenantId: T, email: 'generic-pw@imp.co', fullName: 'Generic Pw',
+        passwordHash: 'x', mustChangePassword: true,
+      },
+    });
+    await auth.requestActivation('generic-pw@imp.co', 'imp-co');
+    expect(mail.recipients()).toContain('generic-pw@imp.co');
+    mail.reset();
 
     // A genuinely pending account does get one.
     await asAdmin(() => users.importUsers({
