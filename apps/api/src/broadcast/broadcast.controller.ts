@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { BroadcastService } from './broadcast.service';
 import {
-  BroadcastRecipientsQueryDto, ResendActivationDto, SendAnnouncementDto,
+  BroadcastRecipientsQueryDto, PreviewAnnouncementDto, ResendActivationDto, SendAnnouncementDto,
 } from './dto/broadcast.dto';
 
 /** Admin-only: bulk email to a chosen slice of the roster. */
@@ -26,5 +26,10 @@ export class BroadcastController {
   @Post('announcement')
   sendAnnouncement(@Body() dto: SendAnnouncementDto) {
     return this.svc.sendAnnouncement(dto);
+  }
+
+  @Post('announcement/preview')
+  previewAnnouncement(@Body() dto: PreviewAnnouncementDto) {
+    return this.svc.previewAnnouncement(dto);
   }
 }

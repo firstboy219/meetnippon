@@ -155,6 +155,14 @@ tr:last-child td { border-bottom: none; }
 .copy-row .f-input.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
 /* Menu Access grid: role columns centered and no wider than they need. */
 .mv-table th.mv-col, .mv-table td.mv-col { text-align: center; width: 90px; }
+
+/* Announcement composer's rich-text editor. Quill's own chrome (toolbar,
+   border) is left as-is; only the editing area's height and the outer
+   corner radius are tuned to match this app's other inputs. */
+.rich-editor .ql-toolbar { border-radius: 9px 9px 0 0; border-color: var(--line); background: #FBFAF7; }
+.rich-editor .ql-container { border-radius: 0 0 9px 9px; border-color: var(--line); font-family: var(--font-sans); font-size: 13px; }
+.rich-editor .ql-editor { min-height: 220px; }
+.email-preview-frame { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 10px; background: #F1EFE9; }
 .mv-table td.mv-col input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; }
 /* Per-room allowlist picker (policies modal) */
 .allow-list { max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }

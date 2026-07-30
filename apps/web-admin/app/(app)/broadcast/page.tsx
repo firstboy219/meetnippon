@@ -4,12 +4,38 @@ import { api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useToast } from '@/lib/toast';
 import type { BroadcastRecipient, Page, UserRole } from '@/lib/types';
-import { ConfirmModal } from '@/components/Modal';
+import { ConfirmModal, Modal } from '@/components/Modal';
 import Pager from '@/components/Pager';
 import { LoadingRegion, SkeletonRows } from '@/components/Skeleton';
+import RichEditor, { isRichTextEmpty } from '@/components/RichEditor';
 
 type Mode = 'ACTIVATION' | 'ANNOUNCEMENT';
 const ROLES: UserRole[] = ['EMPLOYEE', 'APPROVER', 'ADMIN'];
+
+interface Template { id: string; label: string; subject: string; bodyHtml: string }
+
+/** Starting points, not a locked script — every field stays fully editable
+ *  after picking one. Bracketed placeholders are a nudge to fill in the
+ *  specifics, not a format the backend parses. */
+const TEMPLATES: Template[] = [
+  { id: 'blank', label: 'blast.tpl_blank', subject: '', bodyHtml: '' },
+  {
+    id: 'general', label: 'blast.tpl_general', subject: 'Pengumuman',
+    bodyHtml: '<p>Halo semua,</p><p>[Tulis isi pengumuman di sini]</p><p>Terima kasih.</p>',
+  },
+  {
+    id: 'maintenance', label: 'blast.tpl_maintenance', subject: 'Jadwal Maintenance Sistem',
+    bodyHtml: '<p>Halo,</p><p>Sistem akan menjalani maintenance pada <strong>[tanggal &amp; jam]</strong> dan mungkin tidak dapat diakses sementara waktu.</p><p>Mohon maaf atas ketidaknyamanannya.</p>',
+  },
+  {
+    id: 'policy', label: 'blast.tpl_policy', subject: 'Perubahan Kebijakan Booking',
+    bodyHtml: '<p>Halo semua,</p><p>Kami ingin menginformasikan perubahan kebijakan berikut:</p><ul><li>[Poin perubahan 1]</li><li>[Poin perubahan 2]</li></ul><p>Berlaku mulai <strong>[tanggal]</strong>.</p>',
+  },
+  {
+    id: 'holiday', label: 'blast.tpl_holiday', subject: 'Informasi Hari Libur',
+    bodyHtml: '<p>Halo semua,</p><p>Kantor akan libur pada <strong>[tanggal]</strong> dalam rangka [alasan].</p><p>Selamat berlibur!</p>',
+  },
+];
 
 export default function BroadcastPage() {
   const { t } = useI18n();
@@ -29,10 +55,13 @@ export default function BroadcastPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
 
+  const [templateId, setTemplateId] = useState('blank');
   const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  const [messageHtml, setMessageHtml] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   // Debounced so typing in the search box does not fire a request per keystroke.
   const [term, setTerm] = useState('');
@@ -95,12 +124,34 @@ export default function BroadcastPage() {
   const recipientCount = allMatching ? (data?.total ?? 0) : selected.size;
   const canSend = mode === 'ACTIVATION'
     ? recipientCount > 0
-    : recipientCount > 0 && subject.trim().length > 0 && message.trim().length > 0;
+    : recipientCount > 0 && subject.trim().length > 0 && !isRichTextEmpty(messageHtml);
 
   function sendPayload() {
     return allMatching
       ? { mode: 'ALL_MATCHING', filter }
       : { mode: 'SELECTED', userIds: [...selected] };
+  }
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    const tpl = TEMPLATES.find((x) => x.id === id);
+    if (!tpl) return;
+    setSubject(tpl.subject);
+    setMessageHtml(tpl.bodyHtml);
+  }
+
+  async function openPreview() {
+    setPreviewing(true);
+    try {
+      const res = await api.post<{ html: string }>('/admin/broadcast/announcement/preview', {
+        subject: subject.trim() || t('blast.subject_ph'), messageHtml,
+      });
+      setPreviewHtml(res.html);
+    } catch (e: any) {
+      push(e?.message || t('common.save_failed'), 'error');
+    } finally {
+      setPreviewing(false);
+    }
   }
 
   async function send() {
@@ -111,10 +162,10 @@ export default function BroadcastPage() {
         push(t('blast.activation_sent').replace('{n}', String(res.sent)), 'success');
       } else {
         const res = await api.post<{ sent: number }>('/admin/broadcast/announcement', {
-          ...sendPayload(), subject: subject.trim(), message: message.trim(),
+          ...sendPayload(), subject: subject.trim(), messageHtml,
         });
         push(t('blast.announcement_sent').replace('{n}', String(res.sent)), 'success');
-        setSubject(''); setMessage('');
+        setSubject(''); setMessageHtml(''); setTemplateId('blank');
       }
       setSelected(new Set());
       setAllMatching(false);
@@ -146,15 +197,25 @@ export default function BroadcastPage() {
       {mode === 'ANNOUNCEMENT' ? (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="f-group">
+            <label className="f-label">{t('blast.template')}</label>
+            <select className="f-select" value={templateId} onChange={(e) => applyTemplate(e.target.value)}>
+              {TEMPLATES.map((tpl) => <option key={tpl.id} value={tpl.id}>{t(tpl.label)}</option>)}
+            </select>
+            <div className="f-hint">{t('blast.template_hint')}</div>
+          </div>
+          <div className="f-group">
             <label className="f-label">{t('blast.subject')}</label>
             <input className="f-input" value={subject} onChange={(e) => setSubject(e.target.value)}
               maxLength={150} placeholder={t('blast.subject_ph')} />
           </div>
-          <div className="f-group" style={{ marginBottom: 0 }}>
+          <div className="f-group" style={{ marginBottom: 10 }}>
             <label className="f-label">{t('blast.message')}</label>
-            <textarea className="f-input" rows={5} value={message} maxLength={5000}
-              onChange={(e) => setMessage(e.target.value)} placeholder={t('blast.message_ph')} />
+            <RichEditor value={messageHtml} onChange={setMessageHtml} placeholder={t('blast.message_ph')} />
           </div>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={previewing || isRichTextEmpty(messageHtml)}
+            onClick={openPreview}>
+            {previewing ? <span className="spinner" /> : t('blast.preview')}
+          </button>
         </div>
       ) : null}
 
@@ -259,6 +320,13 @@ export default function BroadcastPage() {
           confirmLabel={t(mode === 'ACTIVATION' ? 'blast.send_activation' : 'blast.send_announcement')}
           busy={sending} onClose={() => setConfirming(false)} onConfirm={send}
         />
+      ) : null}
+
+      {previewHtml !== null ? (
+        <Modal title={t('blast.preview_title')} sub={t('blast.preview_sub')} onClose={() => setPreviewHtml(null)} wide
+          footer={<button type="button" className="btn btn-primary" onClick={() => setPreviewHtml(null)}>{t('common.done')}</button>}>
+          <iframe className="email-preview-frame" srcDoc={previewHtml} title={t('blast.preview_title')} sandbox="" />
+        </Modal>
       ) : null}
     </div>
   );

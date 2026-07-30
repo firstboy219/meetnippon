@@ -51,6 +51,12 @@ export interface MailInput {
   eyebrow?: string;
   /** Intro paragraph above the details. */
   intro?: string;
+  /**
+   * Pre-sanitized rich HTML for the body — a composed announcement, not a
+   * plain string. The caller is responsible for sanitizing it (see
+   * BroadcastService) before it ever reaches here; this renders it verbatim.
+   */
+  bodyHtml?: string;
   /** Labelled rows: When, Where, Link, Organiser… */
   details?: MailDetail[];
   /** CTA buttons; the first `primary` one is the filled brand button. */
@@ -268,6 +274,12 @@ export class MailService implements OnModuleInit {
     return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#20242B' : '#FFFFFF';
   }
 
+  /** The rendered HTML for a message, without sending it — used to preview
+   *  a composed email exactly as it will actually go out. */
+  renderHtml(input: MailInput): string {
+    return this.html(input);
+  }
+
   private html(input: MailInput): string {
     const esc = (s: string) =>
       s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -275,7 +287,7 @@ export class MailService implements OnModuleInit {
     const brandName = input.brand?.name || 'MeetNippon';
     const brandColor = /^#?[0-9a-f]{6}$/i.test(input.brand?.color ?? '') ? input.brand!.color! : '#0E6E55';
     const onBrand = this.onColor(brandColor);
-    const structured = Boolean(input.heading || input.details?.length);
+    const structured = Boolean(input.heading || input.details?.length || input.bodyHtml);
 
     const header = `<tr><td style="background:${esc(brandColor)};padding:22px 30px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -303,6 +315,7 @@ ${input.eyebrow ? `<td align="right" style="color:${onBrand};opacity:.9;font-siz
         : '';
       content = `<h1 style="margin:0 0 8px;font-size:21px;font-weight:700;color:#20242B;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${esc(input.heading ?? '')}</h1>
 ${input.intro ? `<p style="margin:0 0 18px;color:#4A4F57;font-size:14px;line-height:1.65">${esc(input.intro).replace(/\n/g, '<br>')}</p>` : ''}
+${input.bodyHtml ? `<div class="mn-body" style="font-size:14px;line-height:1.65;color:#20242B;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${input.bodyHtml}</div>` : ''}
 ${detailsTable}`;
     } else {
       content = `<div style="font-size:15px;line-height:1.65;color:#20242B">${esc(input.text).replace(/\n/g, '<br>')}</div>`;

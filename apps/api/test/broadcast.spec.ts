@@ -129,12 +129,12 @@ describe('resendActivation()', () => {
 });
 
 describe('sendAnnouncement()', () => {
-  it('emails each recipient individually — never one message with everyone in "to"', async () => {
+  it('emails each recipient individually with sanitized rich HTML, never one message with everyone in "to"', async () => {
     const res = await asAdmin(() => broadcast.sendAnnouncement({
       mode: 'ALL_MATCHING',
       filter: { role: 'EMPLOYEE', isActive: 'true' },
       subject: 'Office closed Friday',
-      message: "We're closed this Friday for a public holiday.\nSee you Monday!",
+      messageHtml: '<p>We\'re closed <strong>this Friday</strong>.</p><script>alert(1)</script><p>See you Monday!</p>',
     } as any));
     expect(res.sent).toBe(4); // active1, generic1, pending1, pending2 — inactive1 excluded by isActive filter
     expect(mail.sent).toHaveLength(4);
@@ -144,12 +144,42 @@ describe('sendAnnouncement()', () => {
       expect(to).toHaveLength(1);
     }
     expect(mail.sent[0].subject).toBe('Office closed Friday');
-    expect(mail.sent[0].intro).toContain('See you Monday!');
+    // Formatting survives, the injected script does not.
+    expect(mail.sent[0].bodyHtml).toContain('<strong>this Friday</strong>');
+    expect(mail.sent[0].bodyHtml).not.toContain('<script');
+    // A plain-text fallback is derived for non-HTML mail clients.
+    expect(mail.sent[0].text).toContain('this Friday');
+    expect(mail.sent[0].text).toContain('See you Monday!');
+    expect(mail.sent[0].text).not.toContain('<');
 
     const log = await prisma.auditLog.findFirst({
       where: { tenantId: T, action: 'broadcast.announcement_sent' }, orderBy: { createdAt: 'desc' },
     });
     expect((log?.metadata as any)?.count).toBe(4);
     expect((log?.metadata as any)?.subject).toBe('Office closed Friday');
+  });
+});
+
+describe('previewAnnouncement()', () => {
+  it('renders the exact email without sending it, filing a report, or needing any recipients', async () => {
+    const before = mail.sent.length;
+    const res = await asAdmin(() => broadcast.previewAnnouncement({
+      subject: 'Preview me',
+      messageHtml: '<p>Hello <em>world</em></p>',
+    } as any));
+    expect(res.html).toContain('Preview me');
+    expect(res.html).toContain('<em>world</em>');
+    // Nothing was actually sent.
+    expect(mail.sent.length).toBe(before);
+  });
+
+  it('strips disallowed markup the same way a real send would', async () => {
+    const res = await asAdmin(() => broadcast.previewAnnouncement({
+      subject: 'x',
+      messageHtml: '<p onclick="evil()">safe</p><img src=x onerror=alert(1)>',
+    } as any));
+    expect(res.html).toContain('safe');
+    expect(res.html).not.toContain('onclick');
+    expect(res.html).not.toContain('<img');
   });
 });

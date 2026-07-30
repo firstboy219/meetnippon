@@ -1,4 +1,5 @@
 import './globals.css';
+import 'react-quill-new/dist/quill.snow.css';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { I18nProvider } from '@/lib/i18n';

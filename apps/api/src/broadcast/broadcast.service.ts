@@ -1,12 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { MailService } from '../mail/mail.service';
+import { MailInput, MailService } from '../mail/mail.service';
 import { AuthService } from '../auth/auth.service';
 import { getTenantStore } from '../tenant/tenant-context';
 import { pageParams, toPage } from '../common/pagination';
+import { sanitizeBody, bodyToPlainText } from './sanitize-body.util';
 import {
-  BroadcastFilterDto, BroadcastRecipientsQueryDto, ResendActivationDto, SendAnnouncementDto,
+  BroadcastFilterDto, BroadcastRecipientsQueryDto, PreviewAnnouncementDto,
+  ResendActivationDto, SendAnnouncementDto,
 } from './dto/broadcast.dto';
 
 /** Bounds a single "everyone matching this filter" send — a typo'd filter
@@ -149,6 +151,38 @@ export class BroadcastService {
     return { sent: targets.length };
   }
 
+  /** The MailInput both sendAnnouncement and previewAnnouncement build —
+   *  identical shape, so what an admin previews is exactly what goes out. */
+  private async buildAnnouncementMail(
+    tenantId: string, subject: string, messageHtml: string,
+  ): Promise<{ input: Omit<MailInput, 'to'>; tenant: { name: string | null } | null }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, branding: { select: { displayName: true, primaryColor: true } } },
+    });
+    const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
+    const safeSubject = subject.trim();
+    const safeBody = sanitizeBody(messageHtml);
+    return {
+      tenant,
+      input: {
+        subject: safeSubject,
+        eyebrow: 'Announcement',
+        heading: safeSubject,
+        bodyHtml: safeBody,
+        brand: { name: brandName, color: tenant?.branding?.primaryColor },
+        text: bodyToPlainText(safeBody),
+      },
+    };
+  }
+
+  /** Renders the exact email an announcement would send, without sending
+   *  it, filing a report, or touching the recipient list at all. */
+  async previewAnnouncement(dto: PreviewAnnouncementDto) {
+    const { input } = await this.buildAnnouncementMail(this.tenantId(), dto.subject, dto.messageHtml);
+    return { html: this.mail.renderHtml({ ...input, to: '' }) };
+  }
+
   /**
    * A free-form announcement. Sent as one email per recipient, not a single
    * message with everyone in `to:` — nobody on a company-wide blast should
@@ -157,31 +191,16 @@ export class BroadcastService {
   async sendAnnouncement(dto: SendAnnouncementDto) {
     const tenantId = this.tenantId();
     const targets = (await this.resolveTargets(dto)).filter((u) => u.email);
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { name: true, branding: { select: { displayName: true, primaryColor: true } } },
-    });
-    const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
-    const subject = dto.subject.trim();
-    const message = dto.message.trim();
+    const { input } = await this.buildAnnouncementMail(tenantId, dto.subject, dto.messageHtml);
 
     for (const u of targets) {
-      this.mail.send({
-        tenantId,
-        to: u.email,
-        subject,
-        eyebrow: 'Announcement',
-        heading: subject,
-        intro: message,
-        brand: { name: brandName, color: tenant?.branding?.primaryColor },
-        text: message,
-      });
+      this.mail.send({ ...input, tenantId, to: u.email });
     }
 
     await this.audit.log({
       action: 'broadcast.announcement_sent',
       entity: 'User',
-      metadata: { count: targets.length, subject },
+      metadata: { count: targets.length, subject: input.subject },
     });
     return { sent: targets.length };
   }

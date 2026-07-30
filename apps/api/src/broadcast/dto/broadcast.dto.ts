@@ -43,6 +43,17 @@ export class SendAnnouncementDto extends SendToDto {
   @IsString() @MaxLength(150)
   subject!: string;
 
-  @IsString() @MinLength(1) @MaxLength(5000)
-  message!: string;
+  /** Rich HTML from the composer's editor — sanitized server-side before
+   *  it ever reaches an email template or the database. Markup adds
+   *  overhead over plain text, hence the taller cap than a plain message. */
+  @IsString() @MinLength(1) @MaxLength(20000)
+  messageHtml!: string;
+}
+
+export class PreviewAnnouncementDto {
+  @IsString() @MaxLength(150)
+  subject!: string;
+
+  @IsString() @MaxLength(20000)
+  messageHtml!: string;
 }
