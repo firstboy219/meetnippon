@@ -77,15 +77,19 @@ export default function RequestChangeModal({ booking, draft, onClose, onSent }: 
   const withinBusy = cs >= bs && ce <= be && ce > cs;
   const valid = withinBusy && (touchesStart || touchesEnd);
 
-  // Your own wanted range: anchored at whichever edge the carve-out touches,
-  // extended by the duration already chosen in the meeting form.
+  // Your own wanted range, extended by the duration already chosen in the
+  // meeting form. The overlap reaching the busy slot's END means your
+  // meeting keeps going past it — anchor forward from where you start
+  // needing the room. Reaching the busy slot's START instead means your
+  // meeting already began before it — anchor backward from where you stop
+  // needing it.
   const wanted = useMemo(() => {
     if (!valid) return null;
     const dur = draft.durationMinutes;
-    return touchesStart
+    return touchesEnd
       ? { start: cs, end: cs + dur }
       : { start: ce - dur, end: ce };
-  }, [valid, touchesStart, cs, ce, draft.durationMinutes]);
+  }, [valid, touchesEnd, cs, ce, draft.durationMinutes]);
 
   const fmtHM = (min: number) => {
     const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
