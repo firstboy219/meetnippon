@@ -249,8 +249,14 @@ export class ResourceService {
         endTime: { gt: dayStart },
       },
       orderBy: { startTime: 'asc' },
+      // Enough to render the timeline (title/time/status/owner) *and* to feed
+      // the edit form directly when "Ubah" is clicked from here — leaving out
+      // participants/type/meetingLink/description doesn't just blank those
+      // fields in the form, it silently overwrites them with empty on save,
+      // since the edit modal always resends whatever it was initialised with.
       select: {
-        id: true, title: true, startTime: true, endTime: true, status: true,
+        id: true, title: true, description: true, type: true, meetingLink: true,
+        startTime: true, endTime: true, status: true, participants: true,
         resourceId: true, principalId: true, bookerId: true,
         principal: { select: { fullName: true, department: true } },
       },

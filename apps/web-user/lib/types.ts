@@ -74,6 +74,8 @@ export interface Resource {
   facilities: string[];
   zone: string | null;
   status: string;
+  /** Who the room is meant for, set by the admin — a label, not an enforced restriction. */
+  audience?: 'BOTH' | 'INTERNAL' | 'EXTERNAL';
   floor?: { name: string; building?: { name: string } | null } | null;
   policy?: PublicPolicy;
 }
@@ -116,6 +118,10 @@ export interface DayGrid {
       resourceId: string | null;
       principalId?: string;
       bookerId?: string;
+      description?: string | null;
+      type?: 'OFFLINE' | 'ONLINE' | 'HYBRID';
+      meetingLink?: string | null;
+      participants?: Participant[];
     })[];
     restricted?: boolean;
     canBook?: boolean;

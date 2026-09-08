@@ -12,6 +12,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RequestActivationDto, CompleteActivationDto } from './dto/activation.dto';
+import { RequestPasswordResetDto, CompletePasswordResetDto } from './dto/password-reset.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserCtx } from './decorators/current-user.decorator';
 
@@ -55,5 +56,25 @@ export class AuthController {
   @HttpCode(200)
   completeActivation(@Body() dto: CompleteActivationDto) {
     return this.auth.completeActivation(dto.token, dto.newPassword);
+  }
+
+  /**
+   * "Forgot password" — email a reset link to an account that already has one.
+   *
+   * Deliberately returns the same body whether or not the address exists, for
+   * the same reason as activation/request.
+   */
+  @Post('password/forgot')
+  @HttpCode(200)
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto, @Req() req: Request) {
+    await this.auth.requestPasswordReset(dto.email, dto.tenantSlug, req.headers['host']);
+    return { ok: true };
+  }
+
+  /** Redeem the reset link: set a new password and return a session. */
+  @Post('password/reset')
+  @HttpCode(200)
+  completePasswordReset(@Body() dto: CompletePasswordResetDto) {
+    return this.auth.completePasswordReset(dto.token, dto.newPassword);
   }
 }

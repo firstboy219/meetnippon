@@ -19,6 +19,9 @@ import { MenuVisibilityService } from '../menu/menu-visibility.service';
 
 /** How long an activation link stays usable. */
 const ACTIVATION_TTL_MS = 7 * 24 * 3600_000;
+/** How long a password-reset link stays usable — short-lived since, unlike
+ *  activation, this works on accounts that already have a real password. */
+const PASSWORD_RESET_TTL_MS = 60 * 60_000;
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -222,6 +225,109 @@ export class AuthService {
     await runWithTenant(
       { tenantId: updated.tenantId, userId: updated.id, role: updated.role },
       () => this.audit.log({ action: 'auth.activation.complete', entity: 'User', entityId: updated.id }),
+    );
+    return this.issueSession(updated as any);
+  }
+
+  /**
+   * Start a password reset from the login screen.
+   *
+   * Always resolves the same way whether or not the address exists — same
+   * reasoning as requestActivation. Unlike activation, this is offered to
+   * accounts that already have a self-set password; it is the only path for
+   * "I know my email but forgot my password."
+   */
+  async requestPasswordReset(email: string, tenantSlug?: string, host?: string): Promise<void> {
+    let tenant = await this.resolver.resolveFromHost(host);
+    if (!tenant && tenantSlug) tenant = await this.resolver.resolveBySlug(tenantSlug);
+    if (!tenant) return;
+
+    const addr = email.trim().toLowerCase();
+    const user = await runUnscoped(() =>
+      this.prisma.user.findUnique({
+        where: { tenantId_email: { tenantId: tenant!.tenantId, email: addr } },
+      }),
+    );
+    if (!user || !user.isActive || !user.passwordHash) return;
+
+    const raw = randomBytes(32).toString('base64url');
+    await runUnscoped(() =>
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetTokenHash: sha256(raw),
+          passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+        },
+      }),
+    );
+
+    const base = (this.config.get<string>('APP_BASE_URL') || '').replace(/\/+$/, '');
+    const link = `${base}/reset-password?token=${encodeURIComponent(raw)}`;
+    const tenantRow = await runUnscoped(() =>
+      this.prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: { name: true, branding: { select: { displayName: true, primaryColor: true } } },
+      }),
+    );
+    const brandName = tenantRow?.branding?.displayName || tenantRow?.name || 'MeetNippon';
+    this.mail.send({
+      tenantId: user.tenantId,
+      to: user.email,
+      subject: `Reset your ${brandName} password`,
+      eyebrow: 'Password reset',
+      heading: 'Reset your password',
+      intro: `We received a request to reset the password for ${user.email}. This link is valid for 1 hour and can only be used once. If you didn't ask for this, you can ignore this email — your password stays unchanged.`,
+      details: [
+        { label: 'Workspace', value: brandName },
+        { label: 'Sign-in email', value: user.email },
+      ],
+      buttons: [{ label: 'Reset my password', url: link, primary: true }],
+      brand: { name: brandName, color: tenantRow?.branding?.primaryColor },
+      footerNote: 'If you were not expecting this, no action is needed.',
+      text: [
+        `Reset your ${brandName} password.`,
+        '',
+        `A password reset was requested for ${user.email}.`,
+        'Use the link below. It expires in 1 hour.',
+        '',
+        link,
+      ].join('\n'),
+    });
+  }
+
+  /** Redeem a password-reset token: set a new password and sign the user in. */
+  async completePasswordReset(token: string, newPassword: string): Promise<LoginResult> {
+    const hash = sha256(token);
+    const user = await runUnscoped(() =>
+      this.prisma.user.findFirst({ where: { passwordResetTokenHash: hash } }),
+    );
+    const invalid = new BadRequestException('This reset link is invalid or has already been used.');
+    if (!user || !user.passwordResetTokenHash) throw invalid;
+    // Constant-time compare, so a near-miss hash cannot be probed by timing.
+    const a = Buffer.from(user.passwordResetTokenHash);
+    const b = Buffer.from(hash);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) throw invalid;
+    if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+      throw new BadRequestException('This reset link has expired. Request a new one.');
+    }
+    if (!user.isActive) throw new UnauthorizedException('This account has been deactivated.');
+    if (newPassword.length < 8) throw new BadRequestException('Use at least 8 characters.');
+
+    const passwordHash = await hashPassword(newPassword);
+    const updated = await runUnscoped(() =>
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+        },
+      }),
+    );
+    await runWithTenant(
+      { tenantId: updated.tenantId, userId: updated.id, role: updated.role },
+      () => this.audit.log({ action: 'auth.password_reset.complete', entity: 'User', entityId: updated.id }),
     );
     return this.issueSession(updated as any);
   }

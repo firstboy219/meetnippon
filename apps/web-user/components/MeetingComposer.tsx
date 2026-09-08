@@ -372,6 +372,17 @@ export default function MeetingComposer({
             <label className="f-label">{t('modal.date')}</label>
             <input className="f-input" type="date" value={date} min={todayLocal()} disabled={inProgress}
               onChange={(e) => setDate(e.target.value)} required />
+            {/* Red/green availability signal for the picked date+duration+room
+                (tester feedback #2) — reuses the free-windows fetch that already
+                runs for this date, so no extra request. */}
+            {type !== 'ONLINE' && !loading && fw ? (
+              <div style={{ marginTop: 6 }}>
+                <span className={`swatch ${startOptions.length > 0 ? 'available' : 'booked'}`}>
+                  <span className="dot" />
+                  {startOptions.length > 0 ? t('compose.date_available') : t('compose.date_full')}
+                </span>
+              </div>
+            ) : null}
           </div>
           <div className="f-group">
             <label className="f-label">{t('compose.duration')}</label>

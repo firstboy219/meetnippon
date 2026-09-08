@@ -63,10 +63,16 @@ export class DecideChangeRequestDto {
   @IsOptional() @IsString() @MaxLength(500)
   note?: string;
 
-  /** Required when approving: the author's new time for their own booking. */
+  /** Required when approving, unless ownerCancels: the author's new time for
+   *  their own booking. */
   @IsOptional() @IsISO8601()
   ownerNewStartTime?: string;
 
   @IsOptional() @IsISO8601()
   ownerNewEndTime?: string;
+
+  /** Approve by cancelling the author's own booking outright instead of
+   *  moving it to a new time — an alternative to ownerNewStartTime/EndTime. */
+  @IsOptional() @IsBoolean()
+  ownerCancels?: boolean;
 }

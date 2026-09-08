@@ -19,9 +19,12 @@ function durationLabel(min: number): string {
 }
 
 /**
- * Approving a change request means picking a new time for your OWN meeting
- * first — the window you are granting is blocked out here so it cannot be
- * picked again by mistake. Nothing moves until this is submitted.
+ * Approving a change request shrinks your OWN booking to whatever is left
+ * after the granted slice comes off one edge — automatic, no picking
+ * required (e.g. 14:00-16:00 granting 14:00-15:00 becomes 15:00-16:00).
+ * Only when the whole booking was requested (nothing left to shrink to) do
+ * you pick a fresh time yourself — the window you are granting is blocked
+ * out in that picker so it cannot be picked again by mistake.
  */
 export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
   cr: ChangeRequest;
@@ -32,8 +35,19 @@ export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
   const { push } = useToast();
   const tz = getTenantTz();
 
+  const bStartMs = new Date(cr.booking.startTime).getTime();
+  const bEndMs = new Date(cr.booking.endTime).getTime();
+  const rStartMs = new Date(cr.requestedStartTime).getTime();
+  const rEndMs = new Date(cr.requestedEndTime).getTime();
+  const touchesBookingStart = rStartMs === bStartMs;
+  const touchesBookingEnd = rEndMs === bEndMs;
+  const fullyConsumed = touchesBookingStart && touchesBookingEnd;
+  const autoMode = (touchesBookingStart || touchesBookingEnd) && !fullyConsumed;
+  const leftoverStartMs = autoMode ? (touchesBookingStart ? rEndMs : bStartMs) : 0;
+  const leftoverEndMs = autoMode ? (touchesBookingStart ? bEndMs : rStartMs) : 0;
+
   const [fw, setFw] = useState<FreeWindows | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!autoMode);
   const [err, setErr] = useState(false);
   const origDur = Math.round(
     (new Date(cr.booking.endTime).getTime() - new Date(cr.booking.startTime).getTime()) / 60000,
@@ -41,14 +55,18 @@ export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
   const [duration, setDuration] = useState(origDur);
   const [pickedStart, setPickedStart] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // Alternative to picking a new time when nothing is left to auto-shrink to
+  // (tester feedback #8) — drop the owner's own meeting instead of moving it.
+  const [cancelInstead, setCancelInstead] = useState(false);
 
   useEffect(() => {
+    if (autoMode) return;
     if (!cr.booking.resourceId) { setErr(true); setLoading(false); return; }
     const day = localDateKey(cr.booking.startTime);
     const p = new URLSearchParams({ resourceId: cr.booking.resourceId, day, excludeBookingId: cr.booking.id });
     api.get<FreeWindows>(`/bookings/free-windows?${p}`)
       .then(setFw).catch(() => setErr(true)).finally(() => setLoading(false));
-  }, [cr.booking.id, cr.booking.resourceId, cr.booking.startTime]);
+  }, [autoMode, cr.booking.id, cr.booking.resourceId, cr.booking.startTime]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -94,13 +112,19 @@ export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
   }, [startOptions, pickedStart]);
 
   async function submit() {
-    if (pickedStart == null) return;
+    if (!autoMode && !cancelInstead && pickedStart == null) return;
     setBusy(true);
     try {
       await api.post(`/change-requests/${cr.id}/decide`, {
         decision: 'APPROVED',
-        ownerNewStartTime: new Date(pickedStart).toISOString(),
-        ownerNewEndTime: new Date(pickedStart + durMs).toISOString(),
+        ...(autoMode
+          ? {}
+          : cancelInstead
+            ? { ownerCancels: true }
+            : {
+              ownerNewStartTime: new Date(pickedStart!).toISOString(),
+              ownerNewEndTime: new Date(pickedStart! + durMs).toISOString(),
+            }),
       });
       push(t('creq.applied'), 'success');
       onDecided();
@@ -115,17 +139,30 @@ export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
     <div className="overlay" onClick={onClose}>
       <form className="modal modal-sm" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <div className="modal-head">
-          <h3>{t('creq.approve_title')}</h3>
+          <h3>{autoMode ? t('creq.approve_title_auto') : t('creq.approve_title')}</h3>
           <button type="button" className="close" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
         <div className="modal-sub">{cr.booking.title}</div>
         <div className="info-box" style={{ marginBottom: 14 }}>
           {t('creq.granting')}: <strong>{fmtDateTime(cr.requestedStartTime)} – {fmtDateTime(cr.requestedEndTime)}</strong>
           <br />
-          {t('creq.approve_explain')}
+          {autoMode ? t('creq.approve_auto_explain') : t('creq.approve_explain')}
         </div>
 
-        {loading ? (
+        {autoMode ? (
+          <div className="info-box" style={{ marginBottom: 4 }}>
+            {t('creq.new_time_auto')}: <strong>{hm(leftoverStartMs, tz)}–{hm(leftoverEndMs, tz)} ({tzLabel(tz)})</strong>
+          </div>
+        ) : (
+          <div className="f-group" style={{ marginBottom: cancelInstead ? 4 : 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
+              <input type="checkbox" checked={cancelInstead} onChange={(e) => setCancelInstead(e.target.checked)} />
+              {t('creq.cancel_instead')}
+            </label>
+          </div>
+        )}
+
+        {autoMode || cancelInstead ? null : loading ? (
           <div className="f-hint">{t('common.loading')}</div>
         ) : err || !fw ? (
           <div className="err-box">{t('common.load_error')}</div>
@@ -164,10 +201,13 @@ export default function ApproveRescheduleModal({ cr, onClose, onDecided }: {
             ) : null}
           </>
         )}
+        {!autoMode && cancelInstead ? (
+          <div className="warn-box" style={{ marginBottom: 4 }}>{t('creq.cancel_instead_explain')}</div>
+        ) : null}
 
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="btn btn-primary" disabled={busy || loading || pickedStart == null}>
+          <button className="btn btn-primary" disabled={busy || (!autoMode && !cancelInstead && (loading || pickedStart == null))}>
             {busy ? <span className="spinner" /> : t('creq.approve_apply')}
           </button>
         </div>

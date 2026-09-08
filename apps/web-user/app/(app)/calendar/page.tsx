@@ -7,6 +7,7 @@ import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
 import MeetingComposer from '@/components/MeetingComposer';
+import BookingDetailModal from '@/components/BookingDetailModal';
 import type { Booking, Resource } from '@/lib/types';
 import {
   fmtTime, fmtDayLong, fmtMonthYear, localDateKey,
@@ -59,6 +60,7 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(() => initial.slice(0, 7));
   const [selected, setSelected] = useState(initial);
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Resource[]>([]);
   const [roomFilter, setRoomFilter] = useState('');
 
@@ -196,7 +198,9 @@ export default function CalendarPage() {
                     <div className="cal-day-meta">{b.resource?.name ?? (b.type === 'ONLINE' ? t('common.online') : '—')}</div>
                     {editable ? (
                       <button type="button" className="link" onClick={() => setEditing(b)}>{t('common.edit')}</button>
-                    ) : null}
+                    ) : (
+                      <button type="button" className="link" onClick={() => setViewingId(b.id)}>{t('common.details')}</button>
+                    )}
                   </div>
                   <span className={`swatch ${SWATCH[b.status] ?? 'pending'}`}><span className="dot" />{b.status}</span>
                 </li>
@@ -216,6 +220,19 @@ export default function CalendarPage() {
         <EditBookingModal booking={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
       ) : null}
+
+      {viewingId ? (() => {
+        const b = selectedList.find((x) => x.id === viewingId);
+        return (
+          <BookingDetailModal
+            bookingId={viewingId}
+            fallbackTitle={b?.title ?? ''}
+            fallbackStart={b?.startTime ?? new Date().toISOString()}
+            fallbackEnd={b?.endTime ?? new Date().toISOString()}
+            onClose={() => setViewingId(null)}
+          />
+        );
+      })() : null}
     </div>
   );
 }

@@ -12,6 +12,8 @@ export default function ApprovalsPage() {
   const { push } = useToast();
   const [steps, setSteps] = useState<ApprovalStep[]>([]);
   const [changes, setChanges] = useState<ChangeRequest[]>([]);
+  const [mine, setMine] = useState<ChangeRequest[]>([]);
+  const [decided, setDecided] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState(false);
@@ -23,8 +25,10 @@ export default function ApprovalsPage() {
     Promise.all([
       api.get<ApprovalStep[]>('/approvals'),
       api.get<ChangeRequest[]>('/change-requests/incoming'),
+      api.get<ChangeRequest[]>('/change-requests/mine'),
+      api.get<ChangeRequest[]>('/change-requests/decided'),
     ])
-      .then(([s, c]) => { setSteps(s); setChanges(c); })
+      .then(([s, c, m, d]) => { setSteps(s); setChanges(c); setMine(m); setDecided(d); })
       .catch(() => setErr(true))
       .finally(() => setLoading(false));
   }, []);
@@ -138,10 +142,65 @@ export default function ApprovalsPage() {
         </div>
       )}
 
+      {/* Requests I've made on other people's meetings, and what happened. */}
+      <div className="section-head" style={{ marginTop: 28 }}><h3>{t('creq.mine_title')}</h3></div>
+      {mine.length === 0 ? (
+        <div className="empty">{t('creq.mine_empty')}</div>
+      ) : (
+        <div className="grid grid-2">
+          {mine.map((c) => (
+            <div key={c.id} className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  <div className="card-title">{c.booking.title}</div>
+                  <div className="card-sub">
+                    {t('creq.requested')}: {fmtDateTime(c.requestedStartTime)} – {fmtDateTime(c.requestedEndTime)}
+                  </div>
+                </div>
+                <ChangeRequestStatus status={c.status} t={t} />
+              </div>
+              {c.decisionNote ? <div className="info-box" style={{ marginTop: 10 }}>&ldquo;{c.decisionNote}&rdquo;</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Requests on my own meetings that I've already approved/rejected. */}
+      <div className="section-head" style={{ marginTop: 28 }}><h3>{t('creq.decided_title')}</h3></div>
+      {decided.length === 0 ? (
+        <div className="empty">{t('creq.decided_empty')}</div>
+      ) : (
+        <div className="grid grid-2">
+          {decided.map((c) => (
+            <div key={c.id} className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  <div className="card-title">{c.booking.title}</div>
+                  <div className="card-sub">
+                    {t('creq.from')} {c.requester?.fullName ?? '—'}
+                    {c.booking.resource?.name ? ` · ${c.booking.resource.name}` : ''}
+                  </div>
+                </div>
+                <ChangeRequestStatus status={c.status} t={t} />
+              </div>
+              {c.decisionNote ? <div className="info-box" style={{ marginTop: 10 }}>&ldquo;{c.decisionNote}&rdquo;</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+
       {approving ? (
         <ApproveRescheduleModal cr={approving} onClose={() => setApproving(null)}
           onDecided={() => { setApproving(null); load(); }} />
       ) : null}
     </div>
   );
+}
+
+function ChangeRequestStatus({ status, t }: { status: ChangeRequest['status']; t: (k: string) => string }) {
+  const swatch = status === 'APPROVED' ? 'available' : status === 'REJECTED' ? 'booked' : 'pending';
+  const label = status === 'APPROVED'
+    ? t('creq.status_approved')
+    : status === 'REJECTED' ? t('creq.status_rejected') : t('creq.status_pending');
+  return <span className={`swatch ${swatch}`}><span className="dot" />{label}</span>;
 }

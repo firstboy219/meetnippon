@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [disabled, setDisabled] = useState(false);
   const [composing, setComposing] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -163,11 +164,13 @@ export default function ChatPage() {
               <div>
                 <div className="chat-head-name">{active.name}</div>
                 <div className="chat-head-sub">
-                  {active.isGroup
-                    ? `${active.members.length} ${t('chat.members')}`
-                    : other
-                      ? `${t(`presence.${PRESENCE_LABEL[other.presence ?? 'OFFLINE'] ?? 'offline'}`)}${other.department ? ` · ${other.department}` : ''}`
-                      : ''}
+                  {active.isGroup ? (
+                    <button type="button" className="link" onClick={() => setShowMembers(true)}>
+                      {active.members.length} {t('chat.members')}
+                    </button>
+                  ) : other
+                    ? `${t(`presence.${PRESENCE_LABEL[other.presence ?? 'OFFLINE'] ?? 'offline'}`)}${other.department ? ` · ${other.department}` : ''}`
+                    : ''}
                 </div>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={toggleMute}>
@@ -230,6 +233,34 @@ export default function ChatPage() {
           onClose={() => setShowNew(false)}
           onCreated={(id) => { setShowNew(false); setActiveId(id); loadConvs(); }}
         />
+      ) : null}
+
+      {showMembers && active ? (
+        <div className="overlay" onClick={() => setShowMembers(false)}>
+          <div className="modal modal-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>{active.name}</h3>
+              <button type="button" className="close" onClick={() => setShowMembers(false)} aria-label={t('common.close')}>×</button>
+            </div>
+            <div className="modal-sub">{active.members.length} {t('chat.members')}</div>
+            <ul style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {active.members.map((m) => (
+                <li key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className={`chat-avatar ${(m.presence ?? 'OFFLINE').toLowerCase()}`}>
+                    {m.fullName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div>
+                    <div>{m.fullName}{m.id === user?.id ? ` (${t('chat.you')})` : ''}</div>
+                    <div className="card-sub">
+                      {t(`presence.${PRESENCE_LABEL[m.presence ?? 'OFFLINE'] ?? 'offline'}`)}
+                      {m.department ? ` · ${m.department}` : ''}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       ) : null}
     </div>
   );

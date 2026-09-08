@@ -44,9 +44,12 @@ export interface CreateChangeRequestInput {
  * own meeting can exist too (tester feedback #4, extended).
  *
  * Nothing is booked for either side up front. The calendar changes only when
- * the author decides, and every booking this produces — the author's moved
- * meeting, the requester's — goes through BookingService's normal
- * create/update gate, same policy/conflict checks as any booking.
+ * the author decides. Approving shrinks the author's own booking to whatever
+ * is left after the granted slice comes off one edge — automatic, no manual
+ * re-picking — unless the whole booking was granted, in which case there is
+ * no leftover and the author picks a fresh time. Either way, every booking
+ * this produces goes through BookingService's normal create/update gate,
+ * same policy/conflict checks as any booking.
  */
 @Injectable()
 export class ChangeRequestService {
@@ -98,6 +101,16 @@ export class ChangeRequestService {
     }
     if (reqStart < booking.startTime || reqEnd > booking.endTime) {
       throw new BadRequestException('The requested window must fall within the existing booking.');
+    }
+    // Must also land on one edge of the existing booking, so approving can
+    // always shrink it to a single contiguous leftover instead of splitting
+    // it into two pieces.
+    const touchesBookingStart = reqStart.getTime() === booking.startTime.getTime();
+    const touchesBookingEnd = reqEnd.getTime() === booking.endTime.getTime();
+    if (!touchesBookingStart && !touchesBookingEnd) {
+      throw new BadRequestException(
+        'The requested window must start from, or run to, the edge of the existing booking.',
+      );
     }
 
     const d = input.draft;
@@ -232,19 +245,47 @@ export class ChangeRequestService {
     });
   }
 
+  /** Requests the caller has already approved/rejected on bookings they own —
+   *  the decided counterpart to listIncoming(), which only ever shows PENDING. */
+  listDecided() {
+    const { userId } = this.me();
+    return this.prisma.scoped.bookingChangeRequest.findMany({
+      where: {
+        status: { not: 'PENDING' },
+        booking: { OR: [{ principalId: userId }, { bookerId: userId }] },
+      },
+      orderBy: { decidedAt: 'desc' },
+      take: 50,
+      include: {
+        booking: {
+          select: {
+            id: true, title: true, startTime: true, endTime: true, status: true,
+            resourceId: true,
+            resource: { select: { name: true } },
+          },
+        },
+        requester: { select: { fullName: true, email: true } },
+      },
+    });
+  }
+
   async decide(
     id: string,
     decision: 'APPROVED' | 'REJECTED',
     note?: string,
     ownerNewStartTime?: string,
     ownerNewEndTime?: string,
+    ownerCancels?: boolean,
   ) {
     const { userId, tenantId } = this.me();
     const req = await this.prisma.scoped.bookingChangeRequest.findUnique({
       where: { id },
       include: {
         booking: {
-          select: { id: true, title: true, principalId: true, bookerId: true, resourceId: true },
+          select: {
+            id: true, title: true, principalId: true, bookerId: true, resourceId: true,
+            startTime: true, endTime: true,
+          },
         },
       },
     });
@@ -282,25 +323,60 @@ export class ChangeRequestService {
     // sees the real reason and the request stays PENDING rather than being
     // marked decided with nothing actually applied.
     if (decision === 'APPROVED') {
-      if (!ownerNewStartTime || !ownerNewEndTime) {
-        throw new BadRequestException('Pick a new time for your own meeting to approve this request.');
+      const bStart = req.booking.startTime;
+      const bEnd = req.booking.endTime;
+      const rStart = req.requestedStartTime;
+      const rEnd = req.requestedEndTime;
+      const touchesBookingStart = rStart.getTime() === bStart.getTime();
+      const touchesBookingEnd = rEnd.getTime() === bEnd.getTime();
+      const fullyConsumed = touchesBookingStart && touchesBookingEnd;
+
+      let newStart: Date | null = null;
+      let newEnd: Date | null = null;
+      let ownerCancelled = false;
+
+      if ((touchesBookingStart || touchesBookingEnd) && !fullyConsumed) {
+        // Automatic carve-out: the granted slice comes off one edge of the
+        // booking, so it simply shrinks to whatever is left — no manual
+        // input needed. E.g. a 14:00-16:00 booking granting 14:00-15:00
+        // becomes 15:00-16:00.
+        newStart = touchesBookingStart ? rEnd : bStart;
+        newEnd = touchesBookingStart ? bEnd : rStart;
+      } else if (ownerCancels) {
+        // Nothing is left to shrink to, and the owner would rather drop their
+        // own meeting than move it to a new time — the room stays free for
+        // the requester without forcing a pick (tester feedback #8).
+        ownerCancelled = true;
+      } else {
+        // Nothing is left to shrink to (the whole booking was granted), or
+        // the booking has since moved and the request no longer lines up
+        // with either edge — the owner must pick a fresh time, or cancel.
+        if (!ownerNewStartTime || !ownerNewEndTime) {
+          throw new BadRequestException('Pick a new time for your own meeting, or cancel it, to approve this request.');
+        }
+        newStart = new Date(ownerNewStartTime);
+        newEnd = new Date(ownerNewEndTime);
+        if (Number.isNaN(newStart.getTime()) || Number.isNaN(newEnd.getTime()) || newEnd <= newStart) {
+          throw new BadRequestException('New end must be after the new start.');
+        }
       }
-      const newStart = new Date(ownerNewStartTime);
-      const newEnd = new Date(ownerNewEndTime);
-      if (Number.isNaN(newStart.getTime()) || Number.isNaN(newEnd.getTime()) || newEnd <= newStart) {
-        throw new BadRequestException('New end must be after the new start.');
-      }
+
       // The requester's future booking does not exist yet, so the normal
       // conflict check inside bookings.update() cannot see the window being
-      // granted — guard it explicitly.
-      if (newStart < req.requestedEndTime && newEnd > req.requestedStartTime) {
+      // granted — guard it explicitly. Moot once the owner's booking is
+      // cancelled outright, since there is then nothing left to conflict with.
+      if (!ownerCancelled && newStart! < rEnd && newEnd! > rStart) {
         throw new BadRequestException('That time still overlaps the window you are granting.');
       }
 
-      await this.bookings.update(req.booking.id, {
-        startTime: newStart.toISOString(),
-        endTime: newEnd.toISOString(),
-      });
+      if (ownerCancelled) {
+        await this.bookings.cancel(req.booking.id, 'Room time granted to a colleague’s request.');
+      } else {
+        await this.bookings.update(req.booking.id, {
+          startTime: newStart!.toISOString(),
+          endTime: newEnd!.toISOString(),
+        });
+      }
 
       await asRequester(() => this.bookings.create({
         ...draftInput,
@@ -349,6 +425,7 @@ export class ChangeRequestService {
           ? { start: autoBooked.start.toISOString(), end: autoBooked.end.toISOString() }
           : null,
         autoBookFailure,
+        ownerCancelled: decision === 'APPROVED' ? ownerCancels === true : null,
       },
     });
 

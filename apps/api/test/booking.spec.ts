@@ -287,6 +287,43 @@ describe('booking core', () => {
     expect(mail.sent[0].text).toMatch(/When:/);
   });
 
+  it('notifies participants in-app and by email when a booking is cancelled', async () => {
+    await prisma.notification.deleteMany({ where: { tenantId: A } });
+    mail.reset();
+    const b: any = await asEmp(() =>
+      booking.create({
+        title: 'Kickoff', resourceId: 'roomA1',
+        startTime: iso(at(9)), endTime: iso(at(10)),
+        participants: [
+          { email: 'appr@a.co' },            // a colleague — reachable in-app
+          { email: 'emp@a.co' },             // the organiser — not notified
+          { email: 'outsider@vendor.com', external: true }, // no in-app inbox
+        ],
+      }),
+    );
+
+    await prisma.notification.deleteMany({ where: { tenantId: A } });
+    mail.reset();
+    const cancelled: any = await asEmp(() => booking.cancel(b.id));
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.invites).toEqual({ notified: 1, emailQueued: 2 });
+
+    const notes = await prisma.notification.findMany({ where: { tenantId: A } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].userId).toBe(APPR);
+    expect(notes[0].title).toContain('cancelled');
+
+    expect(mail.recipients().sort()).toEqual(['appr@a.co', 'outsider@vendor.com']);
+    expect(mail.recipients()).not.toContain('emp@a.co');
+    expect(mail.sent[0].subject).toContain('Cancelled');
+    expect(mail.sent[0].text).toContain('cancelled');
+    // the ICS attachment must tell calendar apps to remove the event, not add one
+    const ics = mail.sent[0].attachments?.[0];
+    expect(ics?.contentType).toContain('method=CANCEL');
+    expect(ics?.content).toContain('METHOD:CANCEL');
+    expect(ics?.content).toContain('STATUS:CANCELLED');
+  });
+
   it('sends nothing at all when notify is false', async () => {
     mail.reset();
     await prisma.notification.deleteMany({ where: { tenantId: A } });
@@ -359,6 +396,36 @@ describe('booking core', () => {
         resources.schedule('roomA1'),
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('includes participants in the multi-room schedule grid, not just the title/time', async () => {
+    // "Jadwal Ruangan" opens the edit form straight from this grid — if the
+    // row it hands back is missing participants, the edit form silently
+    // shows (and re-saves) an empty guest list for a booking that has real
+    // invitees.
+    const resources = new ResourceService(prisma, resolver);
+    // A day of its own (D+3), so it cannot collide with any other test's
+    // bookings or their conflict buffers on this room.
+    const D2 = new Date(Date.now() + 5 * 86400000);
+    const at2 = (h: number) => new Date(Date.UTC(D2.getUTCFullYear(), D2.getUTCMonth(), D2.getUTCDate(), h, 0, 0));
+    const b: any = await asEmp(() =>
+      booking.create({
+        title: 'Grid check', resourceId: 'roomA2',
+        startTime: iso(at2(10)), endTime: iso(at2(11)),
+        type: 'HYBRID',
+        meetingLink: 'https://meet.example/grid-check',
+        participants: [{ email: 'appr@a.co' }],
+      }),
+    );
+
+    const day = iso(at2(10)).slice(0, 10);
+    const grid: any = await asEmp(() => resources.dayGrid(day));
+    const room = grid.rooms.find((r: any) => r.id === 'roomA2');
+    const row = room.bookings.find((x: any) => x.id === b.id);
+
+    expect(row.participants).toEqual([{ email: 'appr@a.co' }]);
+    expect(row.type).toBe('HYBRID');
+    expect(row.meetingLink).toBe('https://meet.example/grid-check');
   });
 
   it('lets the owner check in without a token, and refuses a wrong one', async () => {

@@ -91,7 +91,7 @@ export class BookingService {
       resourceId?: string | null; meetingLink?: string | null; description?: string | null;
     },
     participants: { userId?: string; email: string }[],
-    kind: 'invited' | 'moved',
+    kind: 'invited' | 'moved' | 'cancelled',
   ): Promise<{ notified: number; emailQueued: number }> {
     const tenantId = getTenantStore()?.tenantId;
     const callerId = this.caller().userId;
@@ -113,7 +113,9 @@ export class BookingService {
         title:
           kind === 'invited'
             ? `You were invited to "${booking.title}"`
-            : `"${booking.title}" was rescheduled`,
+            : kind === 'moved'
+              ? `"${booking.title}" was rescheduled`
+              : `"${booking.title}" was cancelled`,
         deepLink: '/calendar',
       });
     }
@@ -160,12 +162,17 @@ export class BookingService {
           : []),
       ];
 
-      // A calendar file for Outlook/Teams/Apple Calendar (opening it imports
-      // or updates the event), plus a one-click Google Calendar link — Gmail
-      // does not reliably offer an inline "add" prompt from a bare
-      // attachment the way desktop clients do. Kept on the same UID across a
-      // reschedule (`kind === 'moved'` bumps SEQUENCE) so it updates the
-      // existing calendar entry instead of creating a duplicate.
+      // A calendar file for Outlook/Teams/Apple Calendar (opening it imports,
+      // updates, or — for a cancellation — removes the event), plus a
+      // one-click Google Calendar link for invites. Kept on the same UID
+      // across a reschedule/cancel so it updates or removes the existing
+      // calendar entry instead of creating a duplicate. SEQUENCE must
+      // strictly increase on every REQUEST/CANCEL for the same UID or
+      // calendar clients (Outlook included) treat the message as a stale
+      // duplicate and ignore it — e.g. a cancel sent after a reschedule would
+      // otherwise carry the same SEQUENCE as the "moved" email and never
+      // actually remove the event. Wall-clock seconds are monotonic across
+      // the booking's whole life without needing a persisted counter.
       const ics = buildIcs({
         uid: `${booking.id}@${new URL(this.appBaseUrl()).hostname}`,
         title: booking.title,
@@ -177,7 +184,8 @@ export class BookingService {
         organizerEmail: organiserUser?.email,
         organizerName: organiserUser?.fullName,
         attendeeEmails: recipients,
-        sequence: kind === 'moved' ? 1 : 0,
+        sequence: kind === 'invited' ? 0 : Math.floor(Date.now() / 1000),
+        status: kind === 'cancelled' ? 'CANCELLED' : 'CONFIRMED',
       });
       const gcalUrl = googleCalendarUrl({
         title: booking.title,
@@ -187,23 +195,33 @@ export class BookingService {
         description: booking.description?.trim() || undefined,
       });
 
-      const buttons = [
-        ...(link ? [{ label: 'Join meeting', url: link, primary: true }] : []),
-        { label: 'Add to Google Calendar', url: gcalUrl, primary: !link },
-        { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` },
-      ];
+      // A cancelled meeting has nothing left to join or add — just a link back
+      // to the calendar, so the recipient can see it fall off their schedule.
+      const buttons = kind === 'cancelled'
+        ? [{ label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` }]
+        : [
+          ...(link ? [{ label: 'Join meeting', url: link, primary: true }] : []),
+          { label: 'Add to Google Calendar', url: gcalUrl, primary: !link },
+          { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` },
+        ];
 
       this.mail.send({
         tenantId,
         to: recipients,
         subject: kind === 'invited'
           ? `Invitation: ${booking.title}`
-          : `Rescheduled: ${booking.title}`,
-        eyebrow: kind === 'invited' ? 'New invitation' : 'Meeting updated',
-        heading: kind === 'invited' ? booking.title : `Rescheduled: ${booking.title}`,
+          : kind === 'moved'
+            ? `Rescheduled: ${booking.title}`
+            : `Cancelled: ${booking.title}`,
+        eyebrow: kind === 'invited' ? 'New invitation' : kind === 'moved' ? 'Meeting updated' : 'Meeting cancelled',
+        heading: kind === 'invited'
+          ? booking.title
+          : kind === 'moved' ? `Rescheduled: ${booking.title}` : `Cancelled: ${booking.title}`,
         intro: kind === 'invited'
           ? `You've been invited to a meeting at ${brandName}. The details are below — add it to your calendar or join with one tap.`
-          : `A meeting you're attending at ${brandName} has moved. Here are the new details.`,
+          : kind === 'moved'
+            ? `A meeting you're attending at ${brandName} has moved. Here are the new details.`
+            : `A meeting you were attending at ${brandName} has been cancelled. Remove it from your calendar using the attached file.`,
         details,
         buttons,
         brand: {
@@ -211,15 +229,22 @@ export class BookingService {
           color: tenant?.branding?.primaryColor,
           logoUrl: this.absoluteUrl(tenant?.branding?.logoUrl),
         },
-        footerNote: 'Please let the organiser know if you can’t make it. The attached calendar file adds this meeting to Outlook, Teams, or Apple Calendar — open it, or use the button above for Google Calendar.',
+        footerNote: kind === 'cancelled'
+          ? 'The attached calendar file removes this meeting from Outlook, Teams, or Apple Calendar when opened.'
+          : 'Please let the organiser know if you can’t make it. The attached calendar file adds this meeting to Outlook, Teams, or Apple Calendar — open it, or use the button above for Google Calendar.',
         attachments: [
-          { filename: 'meeting.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=REQUEST' },
+          {
+            filename: 'meeting.ics', content: ics,
+            contentType: `text/calendar; charset=utf-8; method=${kind === 'cancelled' ? 'CANCEL' : 'REQUEST'}`,
+          },
         ],
         // Plain-text fallback mirrors the details for text-only clients.
         text: [
           kind === 'invited'
             ? `You have been invited to a meeting at ${brandName}.`
-            : `A meeting you are attending at ${brandName} has moved.`,
+            : kind === 'moved'
+              ? `A meeting you are attending at ${brandName} has moved.`
+              : `A meeting you were attending at ${brandName} has been cancelled.`,
           '',
           `What:  ${booking.title}`,
           `When:  ${formatRange(booking.startTime, booking.endTime, tz)}`,
@@ -807,7 +832,16 @@ export class BookingService {
       entityId: id,
       metadata: { reason: reason ?? null },
     });
-    return dropCheckInToken(updated);
+
+    const tid = getTenantStore()?.tenantId;
+    if (tid) {
+      await this.calendar.onBookingCancelled(tid, id, booking.principalId);
+    }
+
+    const audience = (updated.participants ?? []) as { userId?: string; email: string }[];
+    const invites = await this.notifyParticipants(updated, audience, 'cancelled');
+
+    return { ...dropCheckInToken(updated), invites };
   }
 
   async checkIn(id: string, token?: string) {

@@ -26,8 +26,14 @@ export class ChangeRequestController {
     return this.svc.listMine();
   }
 
+  /** Requests the caller has already decided on bookings they own. */
+  @Get('change-requests/decided')
+  decided() {
+    return this.svc.listDecided();
+  }
+
   @Post('change-requests/:id/decide')
   decide(@Param('id') id: string, @Body() dto: DecideChangeRequestDto) {
-    return this.svc.decide(id, dto.decision, dto.note, dto.ownerNewStartTime, dto.ownerNewEndTime);
+    return this.svc.decide(id, dto.decision, dto.note, dto.ownerNewStartTime, dto.ownerNewEndTime, dto.ownerCancels);
   }
 }

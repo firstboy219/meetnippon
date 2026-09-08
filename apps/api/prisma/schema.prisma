@@ -54,6 +54,15 @@ enum ResourceStatus {
   INACTIVE
 }
 
+/// Which audience a room is meant for (tester feedback #4) — a label the
+/// admin sets, not an enforced restriction: anyone who can already book the
+/// room can still book it regardless of this value.
+enum RoomAudience {
+  BOTH
+  INTERNAL
+  EXTERNAL
+}
+
 enum PolicyScope {
   TENANT
   CATEGORY
@@ -260,6 +269,11 @@ model User {
   /// replayed as an activation link.
   activationTokenHash String?
   activationExpiresAt DateTime?
+  /// SHA-256 of a one-time "forgot password" token — same one-way-hash
+  /// rationale as activationTokenHash. Unlike activation, this is offered to
+  /// accounts that already have a self-set password.
+  passwordResetTokenHash String?
+  passwordResetExpiresAt DateTime?
   /// When the welcome tour was finished or skipped. Stored per user rather than
   /// in localStorage so onboarding follows the person across devices — and so a
   /// colleague's browser does not silently mark them as onboarded.
@@ -389,6 +403,9 @@ model Resource {
   facilities Json           @default("[]") // ["Projector","VC",...]
   zone       String? // neighborhood/zone for hot-desk
   status     ResourceStatus @default(ACTIVE)
+  /// Admin-set label for who the room is meant for — defaults to BOTH so
+  /// every existing room keeps behaving exactly as before.
+  audience   RoomAudience   @default(BOTH)
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 

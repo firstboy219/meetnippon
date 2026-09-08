@@ -4,8 +4,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 NET=meetnippon_internal
 
+# NEXT_PUBLIC_* vars are baked in at build time, not runtime -- must be passed
+# as --build-arg here, not just left in .env, or the login page keeps showing
+# the workspace field even when a default is configured.
+set -a; . ./.env; set +a
+
 echo "==> build web-user image (standalone)"
-docker build -f apps/web-user/Dockerfile --target prod -t meetnippon-web-user:prod .
+docker build -f apps/web-user/Dockerfile --target prod \
+  --build-arg NEXT_PUBLIC_DEFAULT_WORKSPACE="${NEXT_PUBLIC_DEFAULT_WORKSPACE:-}" \
+  --build-arg NEXT_PUBLIC_EMAIL_HINT="${NEXT_PUBLIC_EMAIL_HINT:-}" \
+  -t meetnippon-web-user:prod .
 
 docker rm -f meetnippon-web-user >/dev/null 2>&1 || true
 docker run -d --name meetnippon-web-user --network "$NET" \

@@ -60,6 +60,8 @@ export interface AdminResource {
   id: string; type: 'ROOM' | 'DESK'; name: string; category: string | null;
   capacity: number; facilities: string[]; zone: string | null;
   status: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
+  /** Who the room is meant for — a label, not an enforced restriction. */
+  audience: 'BOTH' | 'INTERNAL' | 'EXTERNAL';
   floorId?: string | null; floor?: { name: string } | null;
 }
 

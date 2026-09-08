@@ -15,6 +15,7 @@ export class CreateResourceDto {
   @IsOptional() @IsArray() @IsString({ each: true }) facilities?: string[];
   @IsOptional() @IsString() zone?: string;
   @IsOptional() @IsString() floorId?: string;
+  @IsOptional() @IsIn(['BOTH', 'INTERNAL', 'EXTERNAL']) audience?: 'BOTH' | 'INTERNAL' | 'EXTERNAL';
 }
 
 export class UpdateResourceDto {
@@ -25,4 +26,5 @@ export class UpdateResourceDto {
   @IsOptional() @IsString() zone?: string;
   @IsOptional() @IsString() floorId?: string;
   @IsOptional() @IsIn(['ACTIVE', 'MAINTENANCE', 'INACTIVE']) status?: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
+  @IsOptional() @IsIn(['BOTH', 'INTERNAL', 'EXTERNAL']) audience?: 'BOTH' | 'INTERNAL' | 'EXTERNAL';
 }

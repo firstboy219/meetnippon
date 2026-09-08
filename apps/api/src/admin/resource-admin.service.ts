@@ -32,6 +32,7 @@ export class ResourceAdminService {
         facilities: (dto.facilities ?? []) as any,
         zone: dto.zone ?? null,
         floorId: dto.floorId ?? null,
+        audience: dto.audience ?? 'BOTH',
       } as any,
     });
     await this.audit.log({ action: 'resource.create', entity: 'Resource', entityId: r.id, metadata: { type: dto.type } });
@@ -51,6 +52,7 @@ export class ResourceAdminService {
         ...(dto.zone !== undefined ? { zone: dto.zone } : {}),
         ...(dto.floorId !== undefined ? { floorId: dto.floorId } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.audience !== undefined ? { audience: dto.audience } : {}),
       },
     });
     await this.audit.log({ action: 'resource.update', entity: 'Resource', entityId: id });

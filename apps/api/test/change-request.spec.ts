@@ -3,10 +3,13 @@
  * for a slice of someone else's booking. Live DB.
  *
  * The invariant: nothing is booked for either side until the author decides.
- * Approving requires the author to pick their own new time (the granted
- * slice is off the table); the requester's full wanted meeting is then
- * created. Rejecting auto-books the requester at the fallback range — their
- * wanted range with the granted slice trimmed off.
+ * Approving shrinks the author's own booking automatically to whatever is
+ * left after the granted slice comes off one edge (14:00-16:00 granting
+ * 14:00-15:00 becomes 15:00-16:00) — no manual input, unless the whole
+ * booking was granted, in which case the author must pick a fresh time.
+ * Either way the requester's full wanted meeting is then created. Rejecting
+ * auto-books the requester at the fallback range — their wanted range with
+ * the granted slice trimmed off.
  */
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -83,9 +86,15 @@ const makeBooking = () => asOwner(() => bookings.create({
 } as any));
 
 // Peer wants at(3)-at(6); the busy overlap [at(3),at(4)] touches the START
-// of that wanted range — the BRD's own worked example, hours shifted.
+// of that wanted range, and also touches the END of the owner's own
+// at(2)-at(4) booking — the BRD's own worked example, hours shifted.
 const wantedDraft = { title: 'Peer sync', startTime: at(3).toISOString(), endTime: at(6).toISOString() };
 const carveOut = { requestedStartTime: at(3).toISOString(), requestedEndTime: at(4).toISOString() };
+
+// A carve-out matching the owner's ENTIRE booking — nothing is left to
+// shrink to, so approval falls back to a manual pick.
+const wantedDraftFull = { title: 'Peer full', startTime: at(2).toISOString(), endTime: at(5).toISOString() };
+const carveOutFull = { requestedStartTime: at(2).toISOString(), requestedEndTime: at(4).toISOString() };
 
 describe('change requests', () => {
   it('peer requests part of a booking; nothing is booked for either side yet', async () => {
@@ -101,15 +110,17 @@ describe('change requests', () => {
     expect(mail.recipients()).toContain('owner@cr.co');
   });
 
-  it('approve: owner picks a new time, then their move and the requester\'s meeting both land', async () => {
-    const b = await makeBooking();
+  it('approve: automatic carve-out shrinks the owner\'s booking to the leftover, and the requester\'s meeting lands', async () => {
+    const b = await makeBooking(); // at(2)-at(4)
     const req = await asPeer(() => changes.create(b.id, { ...carveOut, draft: wantedDraft }));
 
-    await asOwner(() => changes.decide(req.id, 'APPROVED', undefined, at(7).toISOString(), at(8).toISOString()));
+    // No ownerNewStartTime/EndTime — granting at(3)-at(4) off the END of
+    // at(2)-at(4) must automatically leave at(2)-at(3).
+    await asOwner(() => changes.decide(req.id, 'APPROVED'));
 
     const owner = await prisma.booking.findUnique({ where: { id: b.id } });
-    expect(owner!.startTime.getTime()).toBe(at(7).getTime());
-    expect(owner!.endTime.getTime()).toBe(at(8).getTime());
+    expect(owner!.startTime.getTime()).toBe(at(2).getTime());
+    expect(owner!.endTime.getTime()).toBe(at(3).getTime());
 
     const peerBooking = await prisma.booking.findFirst({ where: { tenantId: T, principalId: PEER } });
     expect(peerBooking).toBeTruthy();
@@ -121,16 +132,22 @@ describe('change requests', () => {
     expect(await prisma.notification.count({ where: { tenantId: T, userId: PEER } })).toBe(1);
   });
 
-  it('approve requires a new owner time', async () => {
+  it('approve requires a new owner time when the whole booking was granted (nothing left to shrink to)', async () => {
     const b = await makeBooking();
-    const req = await asPeer(() => changes.create(b.id, { ...carveOut, draft: wantedDraft }));
+    const req = await asPeer(() => changes.create(b.id, { ...carveOutFull, draft: wantedDraftFull }));
     await expect(asOwner(() => changes.decide(req.id, 'APPROVED')))
       .rejects.toBeInstanceOf(BadRequestException);
+
+    // A valid manual pick still works.
+    await asOwner(() => changes.decide(req.id, 'APPROVED', undefined, at(7).toISOString(), at(8).toISOString()));
+    const owner = await prisma.booking.findUnique({ where: { id: b.id } });
+    expect(owner!.startTime.getTime()).toBe(at(7).getTime());
+    expect(owner!.endTime.getTime()).toBe(at(8).getTime());
   });
 
-  it('owner cannot re-pick a time overlapping what they just granted', async () => {
+  it('owner cannot re-pick a time overlapping what they just granted (full-consumption fallback)', async () => {
     const b = await makeBooking();
-    const req = await asPeer(() => changes.create(b.id, { ...carveOut, draft: wantedDraft }));
+    const req = await asPeer(() => changes.create(b.id, { ...carveOutFull, draft: wantedDraftFull }));
 
     await expect(asOwner(() => changes.decide(req.id, 'APPROVED', undefined, at(3).toISOString(), at(4).toISOString())))
       .rejects.toBeInstanceOf(BadRequestException);
@@ -196,9 +213,19 @@ describe('change requests', () => {
     }))).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('an approval whose new time conflicts elsewhere fails loudly and stays pending', async () => {
+  it('rejects a carve-out that touches neither edge of the existing booking', async () => {
+    const b = await makeBooking(); // at(2)-at(4)
+    const mid1 = new Date(at(2).getTime() + 30 * 60000); // at(2):30
+    const mid2 = new Date(at(2).getTime() + 90 * 60000); // at(3):30
+    await expect(asPeer(() => changes.create(b.id, {
+      requestedStartTime: mid1.toISOString(), requestedEndTime: mid2.toISOString(),
+      draft: { title: 'x', startTime: mid1.toISOString(), endTime: at(5).toISOString() },
+    }))).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('an approval whose new time conflicts elsewhere fails loudly and stays pending (full-consumption fallback)', async () => {
     const b = await makeBooking();
-    const req = await asPeer(() => changes.create(b.id, { ...carveOut, draft: wantedDraft }));
+    const req = await asPeer(() => changes.create(b.id, { ...carveOutFull, draft: wantedDraftFull }));
     // A third booking has since landed on the time the owner is about to pick.
     await asPeer(() => bookings.create({
       title: 'Third meeting', resourceId: R,

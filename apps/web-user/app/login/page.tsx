@@ -145,7 +145,10 @@ function LoginForm() {
               autoComplete="username" required />
           </div>
           <div className="f-group">
-            <label className="f-label">{t('login.password')}</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <label className="f-label">{t('login.password')}</label>
+              <a href="/reset-password" className="link" style={{ fontSize: 12.5 }}>{t('login.forgot_password')}</a>
+            </div>
             <input className="f-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password" required />
           </div>

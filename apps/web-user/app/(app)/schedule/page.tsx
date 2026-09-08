@@ -7,6 +7,7 @@ import { useToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
 import EditBookingModal from '@/components/EditBookingModal';
 import MeetingComposer from '@/components/MeetingComposer';
+import BookingDetailModal from '@/components/BookingDetailModal';
 import type { Booking, DayGrid } from '@/lib/types';
 import { fmtDayLong, fmtTime, todayLocal, tzLabel } from '@/lib/format';
 
@@ -48,6 +49,10 @@ export default function SchedulePage() {
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<Booking | null>(null);
   const [quick, setQuick] = useState<{ roomId: string; roomName: string; floor?: string | null; start: string } | null>(null);
+  const [viewing, setViewing] = useState<{
+    id: string; title: string; startTime: string; endTime: string; ownerName?: string | null;
+    roomId: string; roomName: string; floor?: string | null;
+  } | null>(null);
   const nowRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(() => {
@@ -106,6 +111,10 @@ export default function SchedulePage() {
           <strong className="sched-day">{fmtDayLong(day, lang)}</strong>
           <button type="button" className="cal-step" onClick={() => setDay(shiftDay(day, 1))} aria-label={t('cal.next')}>›</button>
         </div>
+        {/* Jump straight to a date instead of clicking day-by-day (tester feedback #1). */}
+        <input type="date" className="f-input" style={{ width: 'auto', padding: '6px 10px' }}
+          value={day} onChange={(e) => { if (e.target.value) setDay(e.target.value); }}
+          aria-label={t('sched.jump_to_date')} />
         {!isToday ? (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDay(todayLocal())}>{t('cal.today')}</button>
         ) : null}
@@ -184,14 +193,16 @@ export default function SchedulePage() {
                             ev.stopPropagation();   // do not also trigger "book this slot"
                             if (mine && new Date(b.endTime) > new Date()) setEditing(b as Booking);
                             else if (new Date(b.endTime) > new Date()) {
-                              // Someone else's meeting: open the booking form for
-                              // this room instead of a dead-end toast — "Request
-                              // reschedule" on the busy row there can ask the
-                              // author for part of their time, once there is an
-                              // actual meeting of your own to negotiate for.
-                              setQuick({
+                              // Someone else's active meeting: show its details
+                              // first, rather than jumping straight into a blank
+                              // new-booking form for the same slot — from there
+                              // "Request this time" leads into the existing
+                              // change-request flow once there is an actual
+                              // meeting of your own to negotiate for.
+                              setViewing({
+                                id: b.id, title: b.title, startTime: b.startTime, endTime: b.endTime,
+                                ownerName: b.principal?.fullName ?? null,
                                 roomId: room.id, roomName: room.name, floor: room.floor?.name ?? null,
-                                start: fmtTime(b.startTime),
                               });
                             } else push(`${b.title} · ${b.principal?.fullName ?? ''}`, 'success');
                           }}>
@@ -209,6 +220,23 @@ export default function SchedulePage() {
         </div>
       )}
 
+      {viewing ? (
+        <BookingDetailModal
+          bookingId={viewing.id}
+          fallbackTitle={viewing.title}
+          fallbackOwner={viewing.ownerName}
+          fallbackStart={viewing.startTime}
+          fallbackEnd={viewing.endTime}
+          onClose={() => setViewing(null)}
+          onRequestTime={() => {
+            setQuick({
+              roomId: viewing.roomId, roomName: viewing.roomName, floor: viewing.floor,
+              start: fmtTime(viewing.startTime),
+            });
+            setViewing(null);
+          }}
+        />
+      ) : null}
       {quick ? (
         <MeetingComposer
           resourceId={quick.roomId} resourceName={quick.roomName} resourceFloor={quick.floor}
