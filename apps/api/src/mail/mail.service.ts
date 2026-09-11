@@ -173,6 +173,25 @@ export class MailService implements OnModuleInit {
   }
 
   /**
+   * The bare address mail is actually sent from for this tenant (or the
+   * platform default) — no display name, no angle brackets.
+   *
+   * Used as the iCalendar ORGANIZER for booking invites: that field must be
+   * the address the message is authenticated to send as, not the human
+   * organiser's own mailbox. Mismatching the two is a common reason a
+   * calendar client refuses to render Accept/Decline at all, especially for
+   * a recipient domain with stricter alignment/anti-spoof checks than others
+   * — the invite still shows the organiser's real name via organizerName,
+   * only the machine-readable mailto changes.
+   */
+  async fromAddressFor(tenantId?: string): Promise<string> {
+    const t = await this.transportFor(tenantId);
+    const from = t?.from ?? this.from;
+    const angle = from.match(/<([^>]+)>/);
+    return (angle ? angle[1] : from).trim();
+  }
+
+  /**
    * Transport for a tenant, or the platform default.
    *
    * Tenant transports are cached because building one opens a connection pool;

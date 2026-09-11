@@ -173,6 +173,17 @@ export class BookingService {
       // otherwise carry the same SEQUENCE as the "moved" email and never
       // actually remove the event. Wall-clock seconds are monotonic across
       // the booking's whole life without needing a persisted counter.
+      // ORGANIZER must be the address this message is actually authenticated
+      // to send as, not the human organiser's own mailbox — a mismatch there
+      // is a common reason a recipient's mail server (especially one with
+      // stricter alignment/anti-spoof rules than others) renders the message
+      // as a plain email with an attachment instead of a real meeting request,
+      // with no Accept/Decline at all (tester feedback: nipseapaint.com
+      // organiser -> nipponpaint-indonesia.com attendee got no accept button,
+      // while nipseapaint.com -> nipseapaint.com did). The organiser's real
+      // name still shows via organizerName; replyTo below keeps replies
+      // reaching the actual person.
+      const systemFromAddress = await this.mail.fromAddressFor(tenantId);
       const ics = buildIcs({
         uid: `${booking.id}@${new URL(this.appBaseUrl()).hostname}`,
         title: booking.title,
@@ -181,7 +192,7 @@ export class BookingService {
         url: link || undefined,
         start: booking.startTime,
         end: booking.endTime,
-        organizerEmail: organiserUser?.email,
+        organizerEmail: systemFromAddress,
         organizerName: organiserUser?.fullName,
         attendeeEmails: recipients,
         sequence: kind === 'invited' ? 0 : Math.floor(Date.now() / 1000),
@@ -208,6 +219,7 @@ export class BookingService {
       this.mail.send({
         tenantId,
         to: recipients,
+        ...(organiserUser?.email ? { replyTo: organiserUser.email } : {}),
         subject: kind === 'invited'
           ? `Invitation: ${booking.title}`
           : kind === 'moved'
