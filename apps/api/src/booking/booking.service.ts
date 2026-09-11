@@ -245,8 +245,8 @@ export class BookingService {
         },
         footerNote: kind === 'cancelled'
           ? (calendarUrl
-            ? 'If this meeting is still on your calendar, use “Remove from calendar” above — open the file it downloads, then delete the meeting it opens.'
-            : 'If this meeting is still on your calendar, open the attached file to remove it.')
+            ? 'Outlook marks a cancelled meeting but does not always delete it for you. If it is still on your calendar, open it there and choose “Remove from Calendar” — or use “Remove from calendar” above and delete the meeting the file opens.'
+            : 'Outlook marks a cancelled meeting but does not always delete it for you. If it is still on your calendar, open it there and choose “Remove from Calendar”.')
           : (calendarUrl
             ? 'Please let the organiser know if you can’t make it. If this meeting has not appeared on your calendar by itself, use “Add to calendar” above — open the file it downloads, then click Save & Close in Outlook.'
             : 'Please let the organiser know if you can’t make it. If this meeting has not appeared on your calendar by itself, open the attached file, then click Save & Close in Outlook.'),

@@ -52,9 +52,11 @@ export function buildIcs(event: IcsEvent): string {
     ...(event.organizerEmail
       ? [`ORGANIZER;CN=${escapeText(event.organizerName ?? event.organizerEmail)}:mailto:${event.organizerEmail}`]
       : []),
-    ...(event.attendeeEmails ?? []).map(
-      (e) => `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${e}`,
-    ),
+    // A cancellation asks for nothing back, so it carries no RSVP request —
+    // iTIP reserves that for an invitation still awaiting an answer.
+    ...(event.attendeeEmails ?? []).map((e) => (cancelled
+      ? `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION:mailto:${e}`
+      : `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${e}`)),
     `SEQUENCE:${event.sequence ?? 0}`,
     `STATUS:${cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
     'END:VEVENT',
