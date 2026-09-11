@@ -12,7 +12,8 @@ import { AuditService } from '../audit/audit.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { NotificationService } from '../notification/notification.service';
 import { MailService } from '../mail/mail.service';
-import { buildIcs, googleCalendarUrl } from '../mail/ics.util';
+import { buildBookingIcs, googleCalendarUrl, locationLabel } from '../mail/ics.util';
+import { calendarLinkToken } from '../common/secret-box';
 import { ConfigService } from '@nestjs/config';
 import { formatRange } from '../common/tz.util';
 import { getTenantStore } from '../tenant/tenant-context';
@@ -145,9 +146,7 @@ export class BookingService {
       const tz = tenant?.timezone || 'UTC';
       const brandName = tenant?.branding?.displayName || tenant?.name || 'MeetNippon';
       const link = (booking.meetingLink ?? '').trim();
-      const where = resource
-        ? [resource.name, resource.floor?.building?.name, resource.floor?.name].filter(Boolean).join(' · ')
-        : 'Online meeting';
+      const where = locationLabel(resource);
 
       // Structured details, so the meeting link is actually in the email — the
       // whole point of an invitation — alongside a clean when/where/organiser.
@@ -162,42 +161,40 @@ export class BookingService {
           : []),
       ];
 
-      // A calendar file for Outlook/Teams/Apple Calendar (opening it imports,
-      // updates, or — for a cancellation — removes the event), plus a
-      // one-click Google Calendar link for invites. Kept on the same UID
-      // across a reschedule/cancel so it updates or removes the existing
-      // calendar entry instead of creating a duplicate. SEQUENCE must
-      // strictly increase on every REQUEST/CANCEL for the same UID or
-      // calendar clients (Outlook included) treat the message as a stale
-      // duplicate and ignore it — e.g. a cancel sent after a reschedule would
-      // otherwise carry the same SEQUENCE as the "moved" email and never
-      // actually remove the event. Wall-clock seconds are monotonic across
-      // the booking's whole life without needing a persisted counter.
-      // ORGANIZER must be the address this message is actually authenticated
-      // to send as, not the human organiser's own mailbox — a mismatch there
-      // is a common reason a recipient's mail server (especially one with
-      // stricter alignment/anti-spoof rules than others) renders the message
-      // as a plain email with an attachment instead of a real meeting request,
-      // with no Accept/Decline at all (tester feedback: nipseapaint.com
-      // organiser -> nipponpaint-indonesia.com attendee got no accept button,
-      // while nipseapaint.com -> nipseapaint.com did). The organiser's real
-      // name still shows via organizerName; replyTo below keeps replies
-      // reaching the actual person.
+      // The calendar file rides along three ways, because no single one works
+      // for every recipient:
+      //   - as a calendar body part (calendarAlternative below), which is what
+      //     makes Outlook show its native invite UI at all;
+      //   - as an attachment, for anything that just wants a file;
+      //   - as a link (calendarUrl below), for a mailbox that does no calendar
+      //     processing of its own. A POP3 account is exactly that: the message
+      //     is downloaded as plain mail, so nothing reaches the calendar until
+      //     the person opens the file themselves.
+      //
+      // ORGANIZER must be the address this message is authenticated to send
+      // as, not the human organiser's own mailbox — a mismatch there is a
+      // common reason a recipient's server renders the message as a plain
+      // email rather than a meeting request. The organiser's real name still
+      // shows via organizerName, and replyTo keeps replies reaching them.
       const systemFromAddress = await this.mail.fromAddressFor(tenantId);
-      const ics = buildIcs({
-        uid: `${booking.id}@${new URL(this.appBaseUrl()).hostname}`,
+      const ics = buildBookingIcs({
+        bookingId: booking.id,
+        hostname: new URL(this.appBaseUrl()).hostname,
         title: booking.title,
-        description: booking.description?.trim() || undefined,
+        description: booking.description,
         location: where,
-        url: link || undefined,
+        url: link,
         start: booking.startTime,
         end: booking.endTime,
         organizerEmail: systemFromAddress,
         organizerName: organiserUser?.fullName,
         attendeeEmails: recipients,
-        sequence: kind === 'invited' ? 0 : Math.floor(Date.now() / 1000),
-        status: kind === 'cancelled' ? 'CANCELLED' : 'CONFIRMED',
+        revision: kind === 'invited' ? 'initial' : kind === 'moved' ? 'update' : 'cancelled',
       });
+      const calendarToken = calendarLinkToken(booking.id);
+      const calendarUrl = calendarToken
+        ? `${this.appBaseUrl()}/api/public/bookings/${booking.id}/calendar.ics?t=${calendarToken}`
+        : null;
       const gcalUrl = googleCalendarUrl({
         title: booking.title,
         start: booking.startTime,
@@ -206,13 +203,18 @@ export class BookingService {
         description: booking.description?.trim() || undefined,
       });
 
-      // A cancelled meeting has nothing left to join or add — just a link back
-      // to the calendar, so the recipient can see it fall off their schedule.
+      // "Add to calendar" is the reliable path for a mailbox that gives the
+      // recipient no invite UI of its own, so it leads for a cancellation too:
+      // opening that file is how the meeting comes off their calendar.
       const buttons = kind === 'cancelled'
-        ? [{ label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` }]
+        ? [
+          ...(calendarUrl ? [{ label: 'Remove from calendar', url: calendarUrl, primary: true }] : []),
+          { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` },
+        ]
         : [
           ...(link ? [{ label: 'Join meeting', url: link, primary: true }] : []),
-          { label: 'Add to Google Calendar', url: gcalUrl, primary: !link },
+          ...(calendarUrl ? [{ label: 'Add to calendar', url: calendarUrl, primary: !link }] : []),
+          { label: 'Add to Google Calendar', url: gcalUrl },
           { label: 'Open in calendar', url: `${this.appBaseUrl()}/calendar` },
         ];
 
@@ -242,14 +244,19 @@ export class BookingService {
           logoUrl: this.absoluteUrl(tenant?.branding?.logoUrl),
         },
         footerNote: kind === 'cancelled'
-          ? 'The attached calendar file removes this meeting from Outlook, Teams, or Apple Calendar when opened.'
-          : 'Please let the organiser know if you can’t make it. The attached calendar file adds this meeting to Outlook, Teams, or Apple Calendar — open it, or use the button above for Google Calendar.',
+          ? (calendarUrl
+            ? 'If this meeting is still on your calendar, use “Remove from calendar” above — open the file it downloads, then delete the meeting it opens.'
+            : 'If this meeting is still on your calendar, open the attached file to remove it.')
+          : (calendarUrl
+            ? 'Please let the organiser know if you can’t make it. If this meeting has not appeared on your calendar by itself, use “Add to calendar” above — open the file it downloads, then click Save & Close in Outlook.'
+            : 'Please let the organiser know if you can’t make it. If this meeting has not appeared on your calendar by itself, open the attached file, then click Save & Close in Outlook.'),
         attachments: [
           {
             filename: 'meeting.ics', content: ics,
             contentType: `text/calendar; charset=utf-8; method=${kind === 'cancelled' ? 'CANCEL' : 'REQUEST'}`,
           },
         ],
+        calendarAlternative: { content: ics, method: kind === 'cancelled' ? 'CANCEL' : 'REQUEST' },
         // Plain-text fallback mirrors the details for text-only clients.
         text: [
           kind === 'invited'
@@ -263,6 +270,11 @@ export class BookingService {
           `Where: ${where}`,
           ...(link ? [`Link:  ${link}`] : []),
           ...(organiserUser?.fullName ? [`Organiser: ${organiserUser.fullName}`] : []),
+          ...(calendarUrl
+            ? ['', kind === 'cancelled'
+              ? `Remove from your calendar: ${calendarUrl}`
+              : `Add to your calendar: ${calendarUrl}`]
+            : []),
         ].join('\n'),
       });
     }

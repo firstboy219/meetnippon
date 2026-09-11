@@ -67,6 +67,16 @@ export interface MailInput {
   footerNote?: string;
   /** File attachments — e.g. an .ics calendar invite. */
   attachments?: { filename: string; content: string; contentType?: string }[];
+  /**
+   * The same .ics carried as a calendar *body part* rather than a file.
+   *
+   * Outlook only offers its native invite UI when the calendar data arrives
+   * inside multipart/alternative; as a bare attachment it is just a file to
+   * open by hand. Sent alongside the attachment, not instead of it, because a
+   * mailbox with no server-side calendar processing (POP3) still needs
+   * something it can open manually.
+   */
+  calendarAlternative?: { content: string; method: 'REQUEST' | 'CANCEL' };
 }
 
 /**
@@ -160,6 +170,14 @@ export class MailService implements OnModuleInit {
         html: this.html(input),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+        ...(input.calendarAlternative
+          ? {
+            alternatives: [{
+              contentType: `text/calendar; charset=utf-8; method=${input.calendarAlternative.method}`,
+              content: input.calendarAlternative.content,
+            }],
+          }
+          : {}),
       });
       this.logger.log(`[mail:sent] "${input.subject}" -> ${to.length} recipient(s) via ${t.label}`);
       return true;

@@ -63,6 +63,63 @@ export function buildIcs(event: IcsEvent): string {
   return lines.join('\r\n');
 }
 
+/** "Room · Building · Floor" — the one place that shape is decided. */
+export function locationLabel(resource?: {
+  name: string;
+  floor?: { name?: string | null; building?: { name?: string | null } | null } | null;
+} | null): string {
+  if (!resource) return 'Online meeting';
+  return [resource.name, resource.floor?.building?.name, resource.floor?.name]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * The calendar file for a booking.
+ *
+ * Both the invitation email and the public "add to calendar" link go through
+ * here, so a booking's UID, SEQUENCE and STATUS cannot drift between the two —
+ * a calendar client matches them by UID and ignores anything whose SEQUENCE
+ * did not advance, so those three are exactly the fields that must agree.
+ */
+export function buildBookingIcs(input: {
+  bookingId: string;
+  /** Host part of APP_BASE_URL — the UID's domain, stable per deployment. */
+  hostname: string;
+  title: string;
+  description?: string | null;
+  location: string;
+  url?: string | null;
+  start: Date;
+  end: Date;
+  organizerEmail?: string;
+  organizerName?: string | null;
+  attendeeEmails?: string[];
+  /**
+   * `initial` is the first send (SEQUENCE 0); `update` is any later revision,
+   * including a fresh download of an unchanged booking, so re-adding it
+   * refreshes the existing entry instead of being discarded as stale.
+   */
+  revision: 'initial' | 'update' | 'cancelled';
+}): string {
+  return buildIcs({
+    uid: `${input.bookingId}@${input.hostname}`,
+    title: input.title,
+    description: input.description?.trim() || undefined,
+    location: input.location,
+    url: input.url?.trim() || undefined,
+    start: input.start,
+    end: input.end,
+    organizerEmail: input.organizerEmail,
+    organizerName: input.organizerName ?? undefined,
+    attendeeEmails: input.attendeeEmails,
+    // Must strictly increase per UID or clients treat the message as a stale
+    // duplicate; wall-clock seconds are monotonic without a persisted counter.
+    sequence: input.revision === 'initial' ? 0 : Math.floor(Date.now() / 1000),
+    status: input.revision === 'cancelled' ? 'CANCELLED' : 'CONFIRMED',
+  });
+}
+
 /** A one-click "add to calendar" link for Gmail/Google Calendar users, who
  *  don't reliably get an inline prompt from a plain .ics attachment. */
 export function googleCalendarUrl(event: {

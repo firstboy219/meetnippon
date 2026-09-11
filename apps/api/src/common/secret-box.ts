@@ -1,5 +1,5 @@
 import {
-  createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual,
+  createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual,
 } from 'crypto';
 
 /**
@@ -86,6 +86,36 @@ export function decryptSecret(stored: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Unguessable token for the public "add to calendar" link in an invitation
+ * email.
+ *
+ * That link exists for recipients whose mailbox does no calendar processing of
+ * its own — a POP3 account just downloads the message, so Outlook never offers
+ * Accept/Decline and nothing reaches their calendar. Clicking a link has to
+ * work with no session at all, hence a token rather than auth.
+ *
+ * Derived rather than stored: no column, no migration, and it stays valid for
+ * the life of the booking. It guards real content (title, organiser,
+ * attendees), which is why this is a keyed HMAC and not the booking id alone.
+ */
+export function calendarLinkToken(bookingId: string): string | null {
+  // Null rather than a throw: the caller is an invitation email, and sending
+  // one must never be able to fail a booking. A deployment with no key
+  // configured simply gets no link (the attachment still ships); the route
+  // that checks the token fails closed on the same null.
+  let secret: Buffer;
+  try {
+    secret = key();
+  } catch {
+    return null;
+  }
+  return createHmac('sha256', secret)
+    .update(`calendar-link/v1/${bookingId}`)
+    .digest('base64url')
+    .slice(0, 24);
 }
 
 /** Constant-time equality, for comparing secrets without leaking length/prefix. */
