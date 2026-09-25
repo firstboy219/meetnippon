@@ -86,6 +86,9 @@ export default function ApprovalsPage() {
                 </div>
                 <span className="swatch pending"><span className="dot" />Level {s.level}</span>
               </div>
+              <div className="creq-times">
+                <RoomRow name={s.booking.resource?.name} t={t} />
+              </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button className="btn btn-primary" style={{ flex: 1 }} disabled={busy === s.id} onClick={() => decide(s.id, 'APPROVED')}>
                   {t('appr.approve')}
@@ -110,9 +113,9 @@ export default function ApprovalsPage() {
               <div className="card-title">{c.booking.title}</div>
               <div className="card-sub">
                 {t('creq.from')} {c.requester?.fullName ?? '—'}
-                {c.booking.resource?.name ? ` · ${c.booking.resource.name}` : ''}
               </div>
               <div className="creq-times">
+                <RoomRow name={c.booking.resource?.name} t={t} />
                 <div>
                   <span className="creq-label">{t('creq.current')}</span>
                   {fmtDateTime(c.booking.startTime)} – {fmtDateTime(c.booking.endTime)}
@@ -159,6 +162,9 @@ export default function ApprovalsPage() {
                 </div>
                 <ChangeRequestStatus status={c.status} t={t} />
               </div>
+              <div className="creq-times">
+                <RoomRow name={c.booking.resource?.name} t={t} />
+              </div>
               {c.decisionNote ? <div className="info-box" style={{ marginTop: 10 }}>&ldquo;{c.decisionNote}&rdquo;</div> : null}
             </div>
           ))}
@@ -178,10 +184,12 @@ export default function ApprovalsPage() {
                   <div className="card-title">{c.booking.title}</div>
                   <div className="card-sub">
                     {t('creq.from')} {c.requester?.fullName ?? '—'}
-                    {c.booking.resource?.name ? ` · ${c.booking.resource.name}` : ''}
                   </div>
                 </div>
                 <ChangeRequestStatus status={c.status} t={t} />
+              </div>
+              <div className="creq-times">
+                <RoomRow name={c.booking.resource?.name} t={t} />
               </div>
               {c.decisionNote ? <div className="info-box" style={{ marginTop: 10 }}>&ldquo;{c.decisionNote}&rdquo;</div> : null}
             </div>
@@ -193,6 +201,20 @@ export default function ApprovalsPage() {
         <ApproveRescheduleModal cr={approving} onClose={() => setApproving(null)}
           onDecided={() => { setApproving(null); load(); }} />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A labelled room line, the same on every card. Labelled rather than tacked
+ * onto the subtitle because room names here are product names (Bee Brand,
+ * Polyure Mightylac…) — "From Ilham · Bee Brand" does not read as a room.
+ */
+function RoomRow({ name, t }: { name?: string | null; t: (k: string) => string }) {
+  return (
+    <div>
+      <span className="creq-label">{t('bd.room')}</span>
+      <strong>{name ?? t('common.online')}</strong>
     </div>
   );
 }

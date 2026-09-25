@@ -240,7 +240,12 @@ export class ChangeRequestService {
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: {
-        booking: { select: { id: true, title: true, startTime: true, endTime: true } },
+        booking: {
+          select: {
+            id: true, title: true, startTime: true, endTime: true,
+            resource: { select: { name: true } },
+          },
+        },
       },
     });
   }

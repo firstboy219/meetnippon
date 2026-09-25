@@ -381,6 +381,7 @@ export interface ApprovalStep {
     endTime: string;
     principalId: string;
     resourceId: string | null;
+    resource?: { name: string } | null;
     status: string;
   };
 }

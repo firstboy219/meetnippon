@@ -47,6 +47,7 @@ export class ApprovalService {
             endTime: true,
             principalId: true,
             resourceId: true,
+            resource: { select: { name: true } },
             status: true,
           },
         },
